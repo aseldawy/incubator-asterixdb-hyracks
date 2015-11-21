@@ -20,6 +20,8 @@ package org.apache.hyracks.dataflow.std.sjoin;
 
 import org.apache.hyracks.api.dataflow.ActivityId;
 import org.apache.hyracks.api.dataflow.IActivityGraphBuilder;
+import org.apache.hyracks.api.dataflow.value.IPredicateEvaluator;
+import org.apache.hyracks.api.dataflow.value.RecordDescriptor;
 import org.apache.hyracks.api.job.IOperatorDescriptorRegistry;
 import org.apache.hyracks.dataflow.std.base.AbstractOperatorDescriptor;
 
@@ -37,14 +39,21 @@ public class PlaneSweepJoinOperatorDescriptor extends AbstractOperatorDescriptor
 
 	private static final long serialVersionUID = 7908488449729834977L;
 
-	public PlaneSweepJoinOperatorDescriptor(IOperatorDescriptorRegistry spec) {
+	private IPredicateEvaluator predEvaluator;
+
+	public PlaneSweepJoinOperatorDescriptor(IOperatorDescriptorRegistry spec,
+			RecordDescriptor outputDescriptor,
+			IPredicateEvaluator predEvaluator) {
 		super(spec, 2, 1);
+		this.recordDescriptors[0] = outputDescriptor;
+		this.predEvaluator = predEvaluator;
 	}
 
 	@Override
 	public void contributeActivities(IActivityGraphBuilder builder) {
 		ActivityId joinId = new ActivityId(getOperatorId(), JOIN_ACTIVITY_ID);
-		PlaneSweepJoinActivityNode joinActivity = new PlaneSweepJoinActivityNode(joinId);
+		PlaneSweepJoinActivityNode joinActivity =
+				new PlaneSweepJoinActivityNode(joinId, predEvaluator);
 		
 		builder.addActivity(this, joinActivity);
         builder.addSourceEdge(0, joinActivity, 0);

@@ -18,16 +18,20 @@
  */
 package org.apache.hyracks.dataflow.std.sjoin;
 
-import java.io.Closeable;
-import java.io.IOException;
+import java.nio.ByteBuffer;
 
 import org.apache.hyracks.api.comm.IFrameWriter;
+import org.apache.hyracks.api.comm.VSizeFrame;
 import org.apache.hyracks.api.context.IHyracksTaskContext;
 import org.apache.hyracks.api.dataflow.ActivityId;
 import org.apache.hyracks.api.dataflow.IOperatorNodePushable;
+import org.apache.hyracks.api.dataflow.value.IPredicateEvaluator;
 import org.apache.hyracks.api.dataflow.value.IRecordDescriptorProvider;
 import org.apache.hyracks.api.dataflow.value.RecordDescriptor;
 import org.apache.hyracks.api.exceptions.HyracksDataException;
+import org.apache.hyracks.dataflow.common.comm.io.FrameTupleAccessor;
+import org.apache.hyracks.dataflow.common.comm.io.FrameTupleAppender;
+import org.apache.hyracks.dataflow.common.comm.util.FrameUtils;
 import org.apache.hyracks.dataflow.std.base.AbstractActivityNode;
 import org.apache.hyracks.dataflow.std.base.AbstractOperatorNodePushable;
 
@@ -48,16 +52,32 @@ public class PlaneSweepJoinActivityNode extends AbstractActivityNode implements 
 	/**Hyracks context of the underlying job*/
 	protected IHyracksTaskContext ctx;
 
-	public PlaneSweepJoinActivityNode(ActivityId id) {
+	/**
+	 * The predicate evaluator that tests if two tuples in the two datasets
+	 * satisfy the spatial join predicate
+	 */
+	private IPredicateEvaluator predEvaluator;
+
+	/**
+	 * Record descriptor for the first input dataset. This descriptor
+	 * understands how a tuple is encoded in binary data and can parse it
+	 */
+	private RecordDescriptor rd0;
+
+	private RecordDescriptor rd1;
+
+	public PlaneSweepJoinActivityNode(ActivityId id, IPredicateEvaluator predEvaluator) {
 		super(id);
+		this.predEvaluator = predEvaluator;
 		inputDatasets = new CacheFrameWriter[2];
 	}
 
 	@Override
 	public IOperatorNodePushable createPushRuntime(IHyracksTaskContext ctx,
 			IRecordDescriptorProvider recordDescProvider, int partition,
-			int numPartitions)
-					throws HyracksDataException {
+			int numPartitions) throws HyracksDataException {
+		rd0 = recordDescProvider.getInputRecordDescriptor(this.getActivityId(), 0);
+        rd1 = recordDescProvider.getInputRecordDescriptor(this.getActivityId(), 1);
 		this.ctx = ctx;
 		for (int i = 0; i < inputDatasets.length; i++)
 			inputDatasets[i] = new CacheFrameWriter(ctx, this);
@@ -68,7 +88,7 @@ public class PlaneSweepJoinActivityNode extends AbstractActivityNode implements 
 				// TODO Auto-generated method stub
 				
 			}
-
+			
 			@Override
 			public void deinitialize() throws HyracksDataException {
 				// TODO Auto-generated method stub
@@ -103,9 +123,30 @@ public class PlaneSweepJoinActivityNode extends AbstractActivityNode implements 
 		// A notification that one of the inputs has been completely read
 		numInputsComplete++;
 		if (numInputsComplete == 2) {
-			// The two inputs have been completely read. Do the join
-			System.out.println("Join");
+			FrameTupleAccessor accessor0 = new FrameTupleAccessor(rd0);
+			FrameTupleAccessor accessor1 = new FrameTupleAccessor(rd1);
+			FrameTupleAppender appender = new FrameTupleAppender(new VSizeFrame(ctx));
 			outputWriter.open();
+			// The two inputs have been completely read. Do the join
+			// XXX run a nest loop join, for now
+			for (ByteBuffer data0 : inputDatasets[0].cachedFrames) {
+				for (ByteBuffer data1 : inputDatasets[1].cachedFrames) {
+					// Compare records in frame1 with records in frame2
+					accessor0.reset(data0);
+					accessor1.reset(data1);
+					
+					for (int i0 = 0; i0 < accessor0.getTupleCount(); i0++) {
+						for (int i1 = 0; i1 < accessor1.getTupleCount(); i1++) {
+							if (predEvaluator.evaluate(accessor0, i0, accessor1, i1)) {
+								// Found a matching pair, write them to the output
+								FrameUtils.appendConcatToWriter(outputWriter, appender, accessor0, i0, accessor1, i1);
+								System.out.println("Found a matching pair");
+							}
+						}
+					}
+				}
+			}
+			appender.flush(outputWriter, true);
 			outputWriter.close();
 		}
 	}
