@@ -110,7 +110,7 @@ public abstract class AbstractSorterOperatorDescriptor extends AbstractOperatorD
         }
     }
 
-    protected abstract static class SortActivity extends AbstractActivityNode {
+    protected abstract class SortActivity extends AbstractActivityNode {
         private static final long serialVersionUID = 1L;
 
         public SortActivity(ActivityId id) {

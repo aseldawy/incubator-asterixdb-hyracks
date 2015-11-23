@@ -28,6 +28,7 @@ import org.apache.hyracks.api.dataflow.IActivityGraphBuilder;
 import org.apache.hyracks.api.dataflow.IOperatorNodePushable;
 import org.apache.hyracks.api.dataflow.value.IPredicateEvaluator;
 import org.apache.hyracks.api.dataflow.value.IRecordDescriptorProvider;
+import org.apache.hyracks.api.dataflow.value.ITuplePairComparator;
 import org.apache.hyracks.api.dataflow.value.RecordDescriptor;
 import org.apache.hyracks.api.exceptions.HyracksDataException;
 import org.apache.hyracks.api.job.IOperatorDescriptorRegistry;
@@ -52,11 +53,51 @@ public class PlaneSweepJoinOperatorDescriptor extends AbstractOperatorDescriptor
 
     private static final long serialVersionUID = 7908488449729834977L;
 
+    /** The spatial join predicate */
     private IPredicateEvaluator predEvaluator;
 
-    public PlaneSweepJoinOperatorDescriptor(IOperatorDescriptorRegistry spec, RecordDescriptor outputDescriptor,
-            IPredicateEvaluator predEvaluator) {
+    /** Compares two R records based on their left edge */
+    private ITuplePairComparator rx1rx1;
+
+    /** Compares two S records based on their left edge */
+    private ITuplePairComparator sx1sx1;
+
+    /** Compares the left edge of an R record to the right edge of an S record */
+    private ITuplePairComparator rx1sx2;
+
+    /** Compares the left edge of an S record to the right edge of an R record */
+    private ITuplePairComparator sx1rx2;
+
+    /**
+     * Constructs a new plane sweep join operator. The input is two datasets,
+     * R and S, and the output is every pair of records (r, s) where the join
+     * predicate is true.
+     * 
+     * @param spec
+     *            Job specification
+     * @param rx1rx1
+     *            Compares two records r1 and r2 that both belong to R based
+     *            on their left edge. This comparator is used to sort the R dataset.
+     * @param sx1sx1
+     *            Compares two records s1 and s2 that both belong to S based
+     *            on their left edge. This comparator is used to sort the S dataset.
+     * @param rx1sx2
+     *            Compares the left edge of an R record to the right edge of an
+     *            S record. This comparator is used to run the plane-sweep algorithm.
+     * @param sx1rx2
+     *            Compares the left edge of an S record to the right edge of an
+     *            R record. This comparator is used to run the plane-sweep algorithm.
+     * @param outputDescriptor
+     * @param predEvaluator
+     */
+    public PlaneSweepJoinOperatorDescriptor(IOperatorDescriptorRegistry spec, ITuplePairComparator rx1rx1,
+            ITuplePairComparator sx1sx1, ITuplePairComparator rx1sx2, ITuplePairComparator sx1rx2,
+            RecordDescriptor outputDescriptor, IPredicateEvaluator predEvaluator) {
         super(spec, 2, 1);
+        this.rx1rx1 = rx1rx1;
+        this.sx1sx1 = sx1sx1;
+        this.rx1sx2 = rx1sx2;
+        this.sx1rx2 = sx1rx2;
         this.recordDescriptors[0] = outputDescriptor;
         this.predEvaluator = predEvaluator;
     }

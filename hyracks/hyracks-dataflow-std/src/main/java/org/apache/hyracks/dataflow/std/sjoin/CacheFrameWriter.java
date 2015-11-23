@@ -20,6 +20,7 @@ package org.apache.hyracks.dataflow.std.sjoin;
 
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.List;
 
 import org.apache.hyracks.api.comm.IFrameWriter;
@@ -33,7 +34,7 @@ import org.apache.hyracks.dataflow.common.comm.util.FrameUtils;
  * 
  * @author Ahmed Eldawy
  */
-public class CacheFrameWriter implements IFrameWriter {
+public class CacheFrameWriter implements IFrameWriter, Iterable<ByteBuffer> {
     /** All cached frames */
     protected List<ByteBuffer> cachedFrames;
     /** Hyracks context of the running job */
@@ -69,5 +70,14 @@ public class CacheFrameWriter implements IFrameWriter {
     public void close() throws HyracksDataException {
         // Notify its creator that it has been closed
         notifiable.notify(this);
+    }
+
+    /**
+     * Iterates over all the cached data frames
+     */
+    @Override
+    public Iterator<ByteBuffer> iterator() {
+        // TODO Auto-generated method stub
+        return null;
     }
 }

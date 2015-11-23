@@ -28,8 +28,10 @@ import org.apache.hyracks.api.dataflow.IConnectorDescriptor;
 import org.apache.hyracks.api.dataflow.IOperatorDescriptor;
 import org.apache.hyracks.api.dataflow.value.IPredicateEvaluator;
 import org.apache.hyracks.api.dataflow.value.ISerializerDeserializer;
+import org.apache.hyracks.api.dataflow.value.ITuplePairComparator;
 import org.apache.hyracks.api.dataflow.value.RecordDescriptor;
 import org.apache.hyracks.api.dataset.ResultSetId;
+import org.apache.hyracks.api.exceptions.HyracksDataException;
 import org.apache.hyracks.api.io.FileReference;
 import org.apache.hyracks.api.job.JobSpecification;
 import org.apache.hyracks.dataflow.common.data.marshalling.DoubleSerializerDeserializer;
@@ -92,7 +94,8 @@ public class SpatialJoinTest extends AbstractIntegrationTest {
                 DoubleSerializerDeserializer.INSTANCE, DoubleSerializerDeserializer.INSTANCE,
                 DoubleSerializerDeserializer.INSTANCE, DoubleSerializerDeserializer.INSTANCE });
 
-        PlaneSweepJoinOperatorDescriptor join = new PlaneSweepJoinOperatorDescriptor(spec, outputDesc,
+        PlaneSweepJoinOperatorDescriptor join = new PlaneSweepJoinOperatorDescriptor(spec, new X1X1Comparator(),
+                new X1X1Comparator(), new X1X2Comparator(), new X1X2Comparator(), outputDesc,
                 new SpatialOverlapPredicate());
         PartitionConstraintHelper.addAbsoluteLocationConstraint(spec, join, NC1_ID);
 
@@ -149,7 +152,60 @@ public class SpatialJoinTest extends AbstractIntegrationTest {
             // Evaluate the overlap of the two rectangles
             return r0_x2 > r1_x1 && r1_x2 > r0_x1 && r0_y2 > r1_y1 && r1_y2 > r0_y1;
         }
+    }
 
+    /**
+     * Compares two records based on the coordinates of their left edges.
+     * 
+     * @author Ahmed Eldawy
+     */
+    public static class X1X1Comparator implements ITuplePairComparator, Serializable {
+
+        private static final long serialVersionUID = -5880035679836791236L;
+
+        @Override
+        public int compare(IFrameTupleAccessor fta0, int tupId0, IFrameTupleAccessor fta1, int tupId1)
+                throws HyracksDataException {
+            // Read the coordinates of the first rectangle
+            ByteBuffer buf = fta0.getBuffer();
+            double r0_x1 = buf.getDouble(fta0.getAbsoluteFieldStartOffset(tupId0, 1));
+            // Read the coordinates of the second rectangle
+            buf = fta1.getBuffer();
+            double r1_x2 = buf.getDouble(fta1.getAbsoluteFieldStartOffset(tupId1, 3));
+
+            if (r0_x1 < r1_x2)
+                return -1;
+            if (r0_x1 > r1_x2)
+                return 1;
+            return 0;
+        }
+    }
+
+    /**
+     * Compares two records based on the coordinates of their left edges.
+     * 
+     * @author Ahmed Eldawy
+     */
+    public static class X1X2Comparator implements ITuplePairComparator, Serializable {
+
+        private static final long serialVersionUID = -5880035679836791236L;
+
+        @Override
+        public int compare(IFrameTupleAccessor fta0, int tupId0, IFrameTupleAccessor fta1, int tupId1)
+                throws HyracksDataException {
+            // Read the coordinates of the first rectangle
+            ByteBuffer buf = fta0.getBuffer();
+            double r0_x1 = buf.getDouble(fta0.getAbsoluteFieldStartOffset(tupId0, 1));
+            // Read the coordinates of the second rectangle
+            buf = fta1.getBuffer();
+            double r1_x1 = buf.getDouble(fta1.getAbsoluteFieldStartOffset(tupId1, 1));
+
+            if (r0_x1 < r1_x1)
+                return -1;
+            if (r0_x1 > r1_x1)
+                return 1;
+            return 0;
+        }
     }
 
 }
