@@ -23,7 +23,6 @@ import java.util.ArrayList;
 import java.util.List;
 
 import org.apache.hyracks.api.comm.IFrameWriter;
-import org.apache.hyracks.api.comm.VSizeFrame;
 import org.apache.hyracks.api.context.IHyracksTaskContext;
 import org.apache.hyracks.api.dataflow.ActivityId;
 import org.apache.hyracks.api.dataflow.IActivityGraphBuilder;
@@ -35,7 +34,6 @@ import org.apache.hyracks.api.dataflow.value.RecordDescriptor;
 import org.apache.hyracks.api.exceptions.HyracksDataException;
 import org.apache.hyracks.api.job.IOperatorDescriptorRegistry;
 import org.apache.hyracks.dataflow.common.comm.io.FrameTupleAccessor;
-import org.apache.hyracks.dataflow.common.comm.io.FrameTupleAppender;
 import org.apache.hyracks.dataflow.common.comm.util.FrameUtils;
 import org.apache.hyracks.dataflow.std.base.AbstractActivityNode;
 import org.apache.hyracks.dataflow.std.base.AbstractOperatorDescriptor;
@@ -93,6 +91,8 @@ public class PlaneSweepJoinOperatorDescriptor extends AbstractOperatorDescriptor
         this.rx1sx1 = rx1sx1;
         this.rx1sx2 = rx1sx2;
         this.sx1rx2 = sx1rx2;
+        // TODO can I create the output record descriptor here by concatenating
+        // the two input descriptors, or do I have to take it as input?
         this.recordDescriptors[0] = outputDescriptor;
         this.predEvaluator = predEvaluator;
     }
@@ -174,8 +174,6 @@ public class PlaneSweepJoinOperatorDescriptor extends AbstractOperatorDescriptor
                 public void setOutputFrameWriter(int index, IFrameWriter writer, RecordDescriptor recordDesc)
                         throws HyracksDataException {
                     outputWriter = writer;
-                    // TODO Should I define the output record descriptor here or use
-                    // it as an input?
                     outputRecordDescriptor = recordDesc;
                 }
 
@@ -192,73 +190,7 @@ public class PlaneSweepJoinOperatorDescriptor extends AbstractOperatorDescriptor
             // A notification that one of the inputs has been completely read
             numInputsComplete++;
             if (numInputsComplete == 2) {
-                datasets[0].init();
-                datasets[1].init();
-                FrameTupleAppender appender = new FrameTupleAppender(new VSizeFrame(ctx));
-                outputWriter.open();
-                // The two inputs have been completely read. Do the join
-                while (!datasets[0].isEOL() && !datasets[1].isEOL()) {
-                    // Move the sweep line to the lower of the two current records
-                    if (rx1sx1.compare(datasets[0].fta, datasets[0].currentRecord, datasets[1].fta,
-                            datasets[1].currentRecord) < 0) {
-                        // Sweep line stops at an r record (dataset 0)
-                        // Current r record is called the active record
-                        // Scan records in dataset 1 until we pass the right
-                        // edge of the active record. i.e., while (s.x1 < r.x2)
-
-                        // Mark the current position at dataset 1 to return to it later
-                        datasets[1].mark();
-
-                        while (!datasets[1].isEOL() && sx1rx2.compare(datasets[1].fta, datasets[1].currentRecord,
-                                datasets[0].fta, datasets[0].currentRecord) < 0) {
-                            // Check if r and s overlap
-                            if (predEvaluator.evaluate(datasets[0].fta, datasets[0].currentRecord, datasets[1].fta,
-                                    datasets[1].currentRecord)) {
-                                // Report this pair to answer
-                                FrameUtils.appendConcatToWriter(outputWriter, appender, datasets[0].fta,
-                                        datasets[0].currentRecord, datasets[1].fta, datasets[1].currentRecord);
-                                System.out.println("Found a matching pair");
-                            }
-                            // Move to next record in s
-                            datasets[1].next();
-                        }
-
-                        // Reset to the old position of dataset 1
-                        datasets[1].reset();
-                        // Move to the next record in dataset 0
-                        datasets[0].next();
-                    } else {
-                        // Sweep line stops at an s record (dataset 1)
-                        // Current s record is called the active record
-                        // Scan records in dataset 0 until we pass the right
-                        // edge of the active record. i.e., while (r.x1 < s.x2)
-
-                        // Mark the current position at dataset 0 to return to it later
-                        datasets[0].mark();
-
-                        while (!datasets[0].isEOL() && rx1sx2.compare(datasets[0].fta, datasets[0].currentRecord,
-                                datasets[1].fta, datasets[1].currentRecord) < 0) {
-                            // Check if r and s overlap
-                            if (predEvaluator.evaluate(datasets[0].fta, datasets[0].currentRecord, datasets[1].fta,
-                                    datasets[1].currentRecord)) {
-                                // Report this pair to answer
-                                FrameUtils.appendConcatToWriter(outputWriter, appender, datasets[0].fta,
-                                        datasets[0].currentRecord, datasets[1].fta, datasets[1].currentRecord);
-                                System.out.println("Found a matching pair");
-                            }
-                            // Move to next record in r
-                            datasets[0].next();
-                        }
-
-                        // Reset to the old position of dataset 1
-                        datasets[0].reset();
-                        // Move to the next record in dataset 0
-                        datasets[1].next();
-                    }
-                }
-
-                appender.flush(outputWriter, true);
-                outputWriter.close();
+                PlaneSweepJoin.planesweepJoin(ctx, datasets, outputWriter, rx1sx1, rx1sx2, sx1rx2, predEvaluator);
             }
         }
 
@@ -276,18 +208,17 @@ public class PlaneSweepJoinOperatorDescriptor extends AbstractOperatorDescriptor
 
             /** The current frame being accessed */
             private int currentFrame;
-
             /** The index of the record inside the current frame being accessed */
             protected int currentRecord;
             /** {@link FrameTupleAccessor} to iterate over records */
             protected FrameTupleAccessor fta;
+            /** {@link RecordDescriptor} for cached data */
+            private RecordDescriptor rd;
 
             /** The index of the marked frame */
             private int markFrame;
             /** The index of the marked record inside the marked frame */
             private int markRecord;
-            /** {@link RecordDescriptor} for cached data */
-            private RecordDescriptor rd;
 
             /**
              * Creates a frame writer that caches all records in memory

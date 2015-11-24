@@ -53,7 +53,7 @@ import org.junit.Test;
 public class SpatialJoinTest extends AbstractIntegrationTest {
 
     @Test
-    public void rectangleOverlapJoinTest() throws Exception {
+    public void doubleRectangleOverlapJoinTest() throws Exception {
         JobSpecification spec = new JobSpecification();
 
         // Define first input file
@@ -94,8 +94,8 @@ public class SpatialJoinTest extends AbstractIntegrationTest {
                 DoubleSerializerDeserializer.INSTANCE, DoubleSerializerDeserializer.INSTANCE,
                 DoubleSerializerDeserializer.INSTANCE, DoubleSerializerDeserializer.INSTANCE });
 
-        PlaneSweepJoinOperatorDescriptor join = new PlaneSweepJoinOperatorDescriptor(spec, new X1X1Comparator(),
-                new X1X2Comparator(), new X1X2Comparator(), outputDesc, new SpatialOverlapPredicate());
+        PlaneSweepJoinOperatorDescriptor join = new PlaneSweepJoinOperatorDescriptor(spec, new X1X1ComparatorD(),
+                new X1X2ComparatorD(), new X1X2ComparatorD(), outputDesc, new SpatialOverlapPredicateD());
         PartitionConstraintHelper.addAbsoluteLocationConstraint(spec, join, NC1_ID);
 
         ResultSetId rsId = new ResultSetId(1);
@@ -129,7 +129,7 @@ public class SpatialJoinTest extends AbstractIntegrationTest {
      * This predicate evaluator tests if two tuples spatially overlap. The format
      * of the two input tuples is assumed to be (id, x1, y1, x2, y2)
      */
-    public static class SpatialOverlapPredicate implements IPredicateEvaluator, Serializable {
+    public static class SpatialOverlapPredicateD implements IPredicateEvaluator, Serializable {
 
         private static final long serialVersionUID = 5418297063092065477L;
 
@@ -158,34 +158,7 @@ public class SpatialJoinTest extends AbstractIntegrationTest {
      * 
      * @author Ahmed Eldawy
      */
-    public static class X1X2Comparator implements ITuplePairComparator, Serializable {
-
-        private static final long serialVersionUID = -5880035679836791236L;
-
-        @Override
-        public int compare(IFrameTupleAccessor fta0, int tupId0, IFrameTupleAccessor fta1, int tupId1)
-                throws HyracksDataException {
-            // Read the coordinates of the first rectangle
-            ByteBuffer buf = fta0.getBuffer();
-            double r0_x1 = buf.getDouble(fta0.getAbsoluteFieldStartOffset(tupId0, 1));
-            // Read the coordinates of the second rectangle
-            buf = fta1.getBuffer();
-            double r1_x2 = buf.getDouble(fta1.getAbsoluteFieldStartOffset(tupId1, 3));
-
-            if (r0_x1 < r1_x2)
-                return -1;
-            if (r0_x1 > r1_x2)
-                return 1;
-            return 0;
-        }
-    }
-
-    /**
-     * Compares two records based on the coordinates of their left edges.
-     * 
-     * @author Ahmed Eldawy
-     */
-    public static class X1X1Comparator implements ITuplePairComparator, Serializable {
+    public static class X1X1ComparatorD implements ITuplePairComparator, Serializable {
 
         private static final long serialVersionUID = -5880035679836791236L;
 
@@ -207,4 +180,185 @@ public class SpatialJoinTest extends AbstractIntegrationTest {
         }
     }
 
+    /**
+     * Compares the left edge of the first record to the right edge of the second record
+     * 
+     * @author Ahmed Eldawy
+     */
+    public static class X1X2ComparatorD implements ITuplePairComparator, Serializable {
+
+        private static final long serialVersionUID = -5880035679836791236L;
+
+        @Override
+        public int compare(IFrameTupleAccessor fta0, int tupId0, IFrameTupleAccessor fta1, int tupId1)
+                throws HyracksDataException {
+            // Read the coordinates of the first rectangle
+            ByteBuffer buf = fta0.getBuffer();
+            double r0_x1 = buf.getDouble(fta0.getAbsoluteFieldStartOffset(tupId0, 1));
+            // Read the coordinates of the second rectangle
+            buf = fta1.getBuffer();
+            double r1_x2 = buf.getDouble(fta1.getAbsoluteFieldStartOffset(tupId1, 3));
+
+            if (r0_x1 < r1_x2)
+                return -1;
+            if (r0_x1 > r1_x2)
+                return 1;
+            return 0;
+        }
+    }
+
+    @Test
+    public void integerRectangleOverlapJoinTest() throws Exception {
+        JobSpecification spec = new JobSpecification();
+
+        // Define first input file
+        FileSplit[] rect1Splits = new FileSplit[] {
+                new FileSplit(NC1_ID, new FileReference(new File("data/spatial/rects1.csv"))) };
+        IFileSplitProvider rect1SplitsProvider = new ConstantFileSplitProvider(rect1Splits);
+        RecordDescriptor rect1Desc = new RecordDescriptor(
+                new ISerializerDeserializer[] { IntegerSerializerDeserializer.INSTANCE,
+                        IntegerSerializerDeserializer.INSTANCE, IntegerSerializerDeserializer.INSTANCE,
+                        IntegerSerializerDeserializer.INSTANCE, IntegerSerializerDeserializer.INSTANCE });
+        FileScanOperatorDescriptor rect1Scanner = new FileScanOperatorDescriptor(spec, rect1SplitsProvider,
+                new DelimitedDataTupleParserFactory(new IValueParserFactory[] { IntegerParserFactory.INSTANCE,
+                        IntegerParserFactory.INSTANCE, IntegerParserFactory.INSTANCE, IntegerParserFactory.INSTANCE,
+                        IntegerParserFactory.INSTANCE }, ','),
+                rect1Desc);
+        PartitionConstraintHelper.addAbsoluteLocationConstraint(spec, rect1Scanner, NC1_ID);
+
+        // Define second input file
+        FileSplit[] rect2Splits = new FileSplit[] {
+                new FileSplit(NC1_ID, new FileReference(new File("data/spatial/rects2.csv"))) };
+        IFileSplitProvider rect2SplitsProvider = new ConstantFileSplitProvider(rect2Splits);
+        RecordDescriptor rect2Desc = new RecordDescriptor(
+                new ISerializerDeserializer[] { IntegerSerializerDeserializer.INSTANCE,
+                        IntegerSerializerDeserializer.INSTANCE, IntegerSerializerDeserializer.INSTANCE,
+                        IntegerSerializerDeserializer.INSTANCE, IntegerSerializerDeserializer.INSTANCE });
+        FileScanOperatorDescriptor rect2Scanner = new FileScanOperatorDescriptor(spec, rect2SplitsProvider,
+                new DelimitedDataTupleParserFactory(new IValueParserFactory[] { IntegerParserFactory.INSTANCE,
+                        IntegerParserFactory.INSTANCE, IntegerParserFactory.INSTANCE, IntegerParserFactory.INSTANCE,
+                        IntegerParserFactory.INSTANCE }, ','),
+                rect2Desc);
+        PartitionConstraintHelper.addAbsoluteLocationConstraint(spec, rect2Scanner, NC1_ID);
+
+        // Define the output file
+        RecordDescriptor outputDesc = new RecordDescriptor(new ISerializerDeserializer[] {
+                IntegerSerializerDeserializer.INSTANCE, IntegerSerializerDeserializer.INSTANCE,
+                IntegerSerializerDeserializer.INSTANCE, IntegerSerializerDeserializer.INSTANCE,
+                IntegerSerializerDeserializer.INSTANCE, IntegerSerializerDeserializer.INSTANCE,
+                IntegerSerializerDeserializer.INSTANCE, IntegerSerializerDeserializer.INSTANCE,
+                IntegerSerializerDeserializer.INSTANCE, IntegerSerializerDeserializer.INSTANCE });
+
+        PlaneSweepJoinOperatorDescriptor join = new PlaneSweepJoinOperatorDescriptor(spec, new X1X1ComparatorI(),
+                new X1X2ComparatorI(), new X1X2ComparatorI(), outputDesc, new SpatialOverlapPredicateI());
+        PartitionConstraintHelper.addAbsoluteLocationConstraint(spec, join, NC1_ID);
+
+        ResultSetId rsId = new ResultSetId(1);
+        spec.addResultSetId(rsId);
+
+        // TODO consider using for debugging PlainFileWriterOperatorDescriptor
+        IOperatorDescriptor printer = new ResultWriterOperatorDescriptor(spec, rsId, false, false,
+                ResultSerializerFactoryProvider.INSTANCE.getResultSerializerFactoryProvider());
+
+        //        IFileSplitProvider outputSplits = new ConstantFileSplitProvider(new FileSplit[] {new FileSplit(NC1_ID, "test_output")});
+        //        IOperatorDescriptor printer = new PlainFileWriterOperatorDescriptor(spec, outputSplits, ",");
+        PartitionConstraintHelper.addAbsoluteLocationConstraint(spec, printer, NC1_ID);
+
+        // Connect the two inputs
+        IConnectorDescriptor input1Conn = new OneToOneConnectorDescriptor(spec);
+        spec.connect(input1Conn, rect1Scanner, 0, join, 0);
+
+        IConnectorDescriptor input2Conn = new OneToOneConnectorDescriptor(spec);
+        spec.connect(input2Conn, rect2Scanner, 0, join, 1);
+
+        // Connect the output
+        IConnectorDescriptor outputConn = new OneToOneConnectorDescriptor(spec);
+        spec.connect(outputConn, join, 0, printer, 0);
+
+        spec.addRoot(printer);
+        runTestAndStoreResult(spec, new File("sj_test_output_i"));
+        //runTestAndCompareResults(spec, new String[] {"data/spatial/results.csv"});
+    }
+
+    /**
+     * This predicate evaluator tests if two tuples spatially overlap. The format
+     * of the two input tuples is assumed to be (id, x1, y1, x2, y2)
+     */
+    public static class SpatialOverlapPredicateI implements IPredicateEvaluator, Serializable {
+
+        private static final long serialVersionUID = 5418297063092065477L;
+
+        @Override
+        public boolean evaluate(IFrameTupleAccessor fta0, int tupId0, IFrameTupleAccessor fta1, int tupId1) {
+            // Read the coordinates of the first rectangle
+            ByteBuffer buf = fta0.getBuffer();
+            int r0_x1 = buf.getInt(fta0.getAbsoluteFieldStartOffset(tupId0, 1));
+            int r0_y1 = buf.getInt(fta0.getAbsoluteFieldStartOffset(tupId0, 2));
+            int r0_x2 = buf.getInt(fta0.getAbsoluteFieldStartOffset(tupId0, 3));
+            int r0_y2 = buf.getInt(fta0.getAbsoluteFieldStartOffset(tupId0, 4));
+            // Read the coordinates of the second rectangle
+            buf = fta1.getBuffer();
+            int r1_x1 = buf.getInt(fta1.getAbsoluteFieldStartOffset(tupId1, 1));
+            int r1_y1 = buf.getInt(fta1.getAbsoluteFieldStartOffset(tupId1, 2));
+            int r1_x2 = buf.getInt(fta1.getAbsoluteFieldStartOffset(tupId1, 3));
+            int r1_y2 = buf.getInt(fta1.getAbsoluteFieldStartOffset(tupId1, 4));
+
+            // Evaluate the overlap of the two rectangles
+            return r0_x2 > r1_x1 && r1_x2 > r0_x1 && r0_y2 > r1_y1 && r1_y2 > r0_y1;
+        }
+    }
+
+    /**
+     * Compares two records based on the coordinates of their left edges.
+     * 
+     * @author Ahmed Eldawy
+     */
+    public static class X1X1ComparatorI implements ITuplePairComparator, Serializable {
+
+        private static final long serialVersionUID = -5880035679836791236L;
+
+        @Override
+        public int compare(IFrameTupleAccessor fta0, int tupId0, IFrameTupleAccessor fta1, int tupId1)
+                throws HyracksDataException {
+            // Read the coordinates of the first rectangle
+            ByteBuffer buf = fta0.getBuffer();
+            int r0_x1 = buf.getInt(fta0.getAbsoluteFieldStartOffset(tupId0, 1));
+            // Read the coordinates of the second rectangle
+            buf = fta1.getBuffer();
+            int r1_x1 = buf.getInt(fta1.getAbsoluteFieldStartOffset(tupId1, 1));
+
+            if (r0_x1 < r1_x1)
+                return -1;
+            if (r0_x1 > r1_x1)
+                return 1;
+            return 0;
+        }
+    }
+
+    /**
+     * Compares the left edge of the first record to the right edge of the second record
+     * 
+     * @author Ahmed Eldawy
+     */
+    public static class X1X2ComparatorI implements ITuplePairComparator, Serializable {
+
+        private static final long serialVersionUID = -5880035679836791236L;
+
+        @Override
+        public int compare(IFrameTupleAccessor fta0, int tupId0, IFrameTupleAccessor fta1, int tupId1)
+                throws HyracksDataException {
+            // Read the coordinates of the first rectangle
+            ByteBuffer buf = fta0.getBuffer();
+            int r0_x1 = buf.getInt(fta0.getAbsoluteFieldStartOffset(tupId0, 1));
+            // Read the coordinates of the second rectangle
+            buf = fta1.getBuffer();
+            int r1_x2 = buf.getInt(fta1.getAbsoluteFieldStartOffset(tupId1, 3));
+
+            if (r0_x1 < r1_x2)
+                return -1;
+            if (r0_x1 > r1_x2)
+                return 1;
+            return 0;
+        }
+    }
 }
