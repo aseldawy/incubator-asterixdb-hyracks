@@ -19,6 +19,8 @@
 package org.apache.hyracks.dataflow.std.sjoin;
 
 import java.nio.ByteBuffer;
+import java.util.ArrayList;
+import java.util.List;
 
 import org.apache.hyracks.api.comm.IFrameWriter;
 import org.apache.hyracks.api.comm.VSizeFrame;
@@ -56,11 +58,8 @@ public class PlaneSweepJoinOperatorDescriptor extends AbstractOperatorDescriptor
     /** The spatial join predicate */
     private IPredicateEvaluator predEvaluator;
 
-    /** Compares two R records based on their left edge */
-    private ITuplePairComparator rx1rx1;
-
-    /** Compares two S records based on their left edge */
-    private ITuplePairComparator sx1sx1;
+    /** Compares the left edge of two records r and s */
+    private ITuplePairComparator rx1sx1;
 
     /** Compares the left edge of an R record to the right edge of an S record */
     private ITuplePairComparator rx1sx2;
@@ -75,12 +74,9 @@ public class PlaneSweepJoinOperatorDescriptor extends AbstractOperatorDescriptor
      * 
      * @param spec
      *            Job specification
-     * @param rx1rx1
-     *            Compares two records r1 and r2 that both belong to R based
-     *            on their left edge. This comparator is used to sort the R dataset.
-     * @param sx1sx1
-     *            Compares two records s1 and s2 that both belong to S based
-     *            on their left edge. This comparator is used to sort the S dataset.
+     * @param rx1sx1
+     *            Compares the left edge of two records from R and S.
+     *            Used to run the plane-sweep join algorithm.
      * @param rx1sx2
      *            Compares the left edge of an R record to the right edge of an
      *            S record. This comparator is used to run the plane-sweep algorithm.
@@ -90,12 +86,11 @@ public class PlaneSweepJoinOperatorDescriptor extends AbstractOperatorDescriptor
      * @param outputDescriptor
      * @param predEvaluator
      */
-    public PlaneSweepJoinOperatorDescriptor(IOperatorDescriptorRegistry spec, ITuplePairComparator rx1rx1,
-            ITuplePairComparator sx1sx1, ITuplePairComparator rx1sx2, ITuplePairComparator sx1rx2,
-            RecordDescriptor outputDescriptor, IPredicateEvaluator predEvaluator) {
+    public PlaneSweepJoinOperatorDescriptor(IOperatorDescriptorRegistry spec, ITuplePairComparator rx1sx1,
+            ITuplePairComparator rx1sx2, ITuplePairComparator sx1rx2, RecordDescriptor outputDescriptor,
+            IPredicateEvaluator predEvaluator) {
         super(spec, 2, 1);
-        this.rx1rx1 = rx1rx1;
-        this.sx1sx1 = sx1sx1;
+        this.rx1sx1 = rx1sx1;
         this.rx1sx2 = rx1sx2;
         this.sx1rx2 = sx1rx2;
         this.recordDescriptors[0] = outputDescriptor;
@@ -105,7 +100,7 @@ public class PlaneSweepJoinOperatorDescriptor extends AbstractOperatorDescriptor
     @Override
     public void contributeActivities(IActivityGraphBuilder builder) {
         ActivityId joinId = new ActivityId(getOperatorId(), JOIN_ACTIVITY_ID);
-        PlaneSweepJoinActivityNode joinActivity = new PlaneSweepJoinActivityNode(joinId, predEvaluator);
+        PlaneSweepJoinActivityNode joinActivity = new PlaneSweepJoinActivityNode(joinId);
 
         builder.addActivity(this, joinActivity);
         builder.addSourceEdge(0, joinActivity, 0);
@@ -118,7 +113,7 @@ public class PlaneSweepJoinOperatorDescriptor extends AbstractOperatorDescriptor
      * 
      * @author Ahmed Eldawy
      */
-    public static class PlaneSweepJoinActivityNode extends AbstractActivityNode implements Notifiable {
+    public class PlaneSweepJoinActivityNode extends AbstractActivityNode {
         private static final long serialVersionUID = 1433873095538085055L;
 
         /** The writer which is used to write output records */
@@ -126,8 +121,8 @@ public class PlaneSweepJoinOperatorDescriptor extends AbstractOperatorDescriptor
         /** Descriptor of output records */
         protected RecordDescriptor outputRecordDescriptor;
 
-        /** A cached version of the two datasets */
-        protected CacheFrameWriter[] inputDatasets;
+        /** A cached version of the two input datasets */
+        protected CacheFrameWriter[] datasets;
 
         /** Number of inputs that have been completely read (0, 1 or 2) */
         protected int numInputsComplete;
@@ -136,34 +131,26 @@ public class PlaneSweepJoinOperatorDescriptor extends AbstractOperatorDescriptor
         protected IHyracksTaskContext ctx;
 
         /**
-         * The predicate evaluator that tests if two tuples in the two datasets
-         * satisfy the spatial join predicate
-         */
-        private IPredicateEvaluator predEvaluator;
-
-        /**
          * Record descriptor for the first input dataset. This descriptor
          * understands how a tuple is encoded in binary data and can parse it
          */
-        private RecordDescriptor rd0;
+        private RecordDescriptor[] rds;
 
-        private RecordDescriptor rd1;
-
-        public PlaneSweepJoinActivityNode(ActivityId id, IPredicateEvaluator predEvaluator) {
+        public PlaneSweepJoinActivityNode(ActivityId id) {
             super(id);
-            this.predEvaluator = predEvaluator;
         }
 
         @Override
         public IOperatorNodePushable createPushRuntime(IHyracksTaskContext ctx,
                 IRecordDescriptorProvider recordDescProvider, int partition, int numPartitions)
                         throws HyracksDataException {
-            rd0 = recordDescProvider.getInputRecordDescriptor(this.getActivityId(), 0);
-            rd1 = recordDescProvider.getInputRecordDescriptor(this.getActivityId(), 1);
             this.ctx = ctx;
-            inputDatasets = new CacheFrameWriter[2];
-            for (int i = 0; i < inputDatasets.length; i++)
-                inputDatasets[i] = new CacheFrameWriter(ctx, this);
+            this.datasets = new CacheFrameWriter[2];
+            this.rds = new RecordDescriptor[datasets.length];
+            for (int i = 0; i < datasets.length; i++) {
+                rds[i] = recordDescProvider.getInputRecordDescriptor(getActivityId(), i);
+                datasets[i] = new CacheFrameWriter(ctx, rds[i]);
+            }
 
             IOperatorNodePushable op = new AbstractOperatorNodePushable() {
                 @Override
@@ -194,44 +181,202 @@ public class PlaneSweepJoinOperatorDescriptor extends AbstractOperatorDescriptor
 
                 @Override
                 public IFrameWriter getInputFrameWriter(int index) {
-                    return inputDatasets[index];
+                    return datasets[index];
                 }
             };
 
             return op;
         }
 
-        @Override
-        public void notify(Object notified) throws HyracksDataException {
+        public void inputComplete() throws HyracksDataException {
             // A notification that one of the inputs has been completely read
             numInputsComplete++;
             if (numInputsComplete == 2) {
-                FrameTupleAccessor accessor0 = new FrameTupleAccessor(rd0);
-                FrameTupleAccessor accessor1 = new FrameTupleAccessor(rd1);
+                datasets[0].init();
+                datasets[1].init();
                 FrameTupleAppender appender = new FrameTupleAppender(new VSizeFrame(ctx));
                 outputWriter.open();
                 // The two inputs have been completely read. Do the join
-                // XXX run a nest loop join, for now
-                for (ByteBuffer data0 : inputDatasets[0].cachedFrames) {
-                    for (ByteBuffer data1 : inputDatasets[1].cachedFrames) {
-                        // Compare records in frame1 with records in frame2
-                        accessor0.reset(data0);
-                        accessor1.reset(data1);
+                while (!datasets[0].isEOL() && !datasets[1].isEOL()) {
+                    // Move the sweep line to the lower of the two current records
+                    if (rx1sx1.compare(datasets[0].fta, datasets[0].currentRecord, datasets[1].fta,
+                            datasets[1].currentRecord) < 0) {
+                        // Sweep line stops at an r record (dataset 0)
+                        // Current r record is called the active record
+                        // Scan records in dataset 1 until we pass the right
+                        // edge of the active record. i.e., while (s.x1 < r.x2)
 
-                        for (int i0 = 0; i0 < accessor0.getTupleCount(); i0++) {
-                            for (int i1 = 0; i1 < accessor1.getTupleCount(); i1++) {
-                                if (predEvaluator.evaluate(accessor0, i0, accessor1, i1)) {
-                                    // Found a matching pair, write them to the output
-                                    FrameUtils.appendConcatToWriter(outputWriter, appender, accessor0, i0, accessor1,
-                                            i1);
-                                    System.out.println("Found a matching pair");
-                                }
+                        // Mark the current position at dataset 1 to return to it later
+                        datasets[1].mark();
+
+                        while (!datasets[1].isEOL() && sx1rx2.compare(datasets[1].fta, datasets[1].currentRecord,
+                                datasets[0].fta, datasets[0].currentRecord) < 0) {
+                            // Check if r and s overlap
+                            if (predEvaluator.evaluate(datasets[0].fta, datasets[0].currentRecord, datasets[1].fta,
+                                    datasets[1].currentRecord)) {
+                                // Report this pair to answer
+                                FrameUtils.appendConcatToWriter(outputWriter, appender, datasets[0].fta,
+                                        datasets[0].currentRecord, datasets[1].fta, datasets[1].currentRecord);
+                                System.out.println("Found a matching pair");
                             }
+                            // Move to next record in s
+                            datasets[1].next();
                         }
+
+                        // Reset to the old position of dataset 1
+                        datasets[1].reset();
+                        // Move to the next record in dataset 0
+                        datasets[0].next();
+                    } else {
+                        // Sweep line stops at an s record (dataset 1)
+                        // Current s record is called the active record
+                        // Scan records in dataset 0 until we pass the right
+                        // edge of the active record. i.e., while (r.x1 < s.x2)
+
+                        // Mark the current position at dataset 0 to return to it later
+                        datasets[0].mark();
+
+                        while (!datasets[0].isEOL() && rx1sx2.compare(datasets[0].fta, datasets[0].currentRecord,
+                                datasets[1].fta, datasets[1].currentRecord) < 0) {
+                            // Check if r and s overlap
+                            if (predEvaluator.evaluate(datasets[0].fta, datasets[0].currentRecord, datasets[1].fta,
+                                    datasets[1].currentRecord)) {
+                                // Report this pair to answer
+                                FrameUtils.appendConcatToWriter(outputWriter, appender, datasets[0].fta,
+                                        datasets[0].currentRecord, datasets[1].fta, datasets[1].currentRecord);
+                                System.out.println("Found a matching pair");
+                            }
+                            // Move to next record in r
+                            datasets[0].next();
+                        }
+
+                        // Reset to the old position of dataset 1
+                        datasets[0].reset();
+                        // Move to the next record in dataset 0
+                        datasets[1].next();
                     }
                 }
+
                 appender.flush(outputWriter, true);
                 outputWriter.close();
+            }
+        }
+
+        /**
+         * A frame writer that caches all frames in memory and makes them available
+         * for later use.
+         * 
+         * @author Ahmed Eldawy
+         */
+        public class CacheFrameWriter implements IFrameWriter {
+            /** All cached frames */
+            private List<ByteBuffer> cachedFrames;
+            /** Hyracks context of the running job */
+            private IHyracksTaskContext ctx;
+
+            /** The current frame being accessed */
+            private int currentFrame;
+
+            /** The index of the record inside the current frame being accessed */
+            protected int currentRecord;
+            /** {@link FrameTupleAccessor} to iterate over records */
+            protected FrameTupleAccessor fta;
+
+            /** The index of the marked frame */
+            private int markFrame;
+            /** The index of the marked record inside the marked frame */
+            private int markRecord;
+            /** {@link RecordDescriptor} for cached data */
+            private RecordDescriptor rd;
+
+            /**
+             * Creates a frame writer that caches all records in memory
+             * 
+             * @param ctx
+             *            Hyracks context of the job being run
+             * @param notifiable
+             *            Used to notify the caller of end of stream
+             * @param rd
+             *            {@link RecordDescriptor} of cached data
+             */
+            public CacheFrameWriter(IHyracksTaskContext ctx, RecordDescriptor rd) {
+                this.ctx = ctx;
+                this.rd = rd;
+            }
+
+            @Override
+            public void open() throws HyracksDataException {
+                // Initialize the in-memory store that will be used to store frames
+                cachedFrames = new ArrayList<ByteBuffer>();
+            }
+
+            @Override
+            public void nextFrame(ByteBuffer buffer) throws HyracksDataException {
+                // Store this buffer in memory for later use
+                ByteBuffer copyBuffer = ctx.allocateFrame(buffer.capacity());
+                FrameUtils.copyAndFlip(buffer, copyBuffer);
+                cachedFrames.add(copyBuffer);
+            }
+
+            @Override
+            public void fail() throws HyracksDataException {
+                outputWriter.fail(); // Cascade the failure to the output
+                cachedFrames = null; // To prevent further insertions
+            }
+
+            @Override
+            public void close() throws HyracksDataException {
+                // Notify its creator that it has been closed
+                inputComplete();
+            }
+
+            /**
+             * Put a mark on the current record being accessed
+             */
+            public void mark() {
+                this.markFrame = this.currentFrame;
+                this.markRecord = this.currentRecord;
+            }
+
+            /**
+             * Reset the iterator to the last marked position
+             */
+            public void reset() {
+                this.currentFrame = this.markFrame;
+                this.currentRecord = this.markRecord;
+            }
+
+            /** Initialize iteration over records */
+            public void init() {
+                this.currentFrame = this.markFrame = 0;
+                this.currentRecord = this.markRecord = 0;
+                this.fta = new FrameTupleAccessor(rd);
+                this.fta.reset(this.cachedFrames.get(currentFrame));
+                // Skip over empty frames, if any
+                // Notice, initially currentRecord is zero
+                while (currentRecord >= fta.getTupleCount() && currentFrame < cachedFrames.size()) {
+                    currentFrame++; // Move to next frame
+                    if (currentFrame < cachedFrames.size())
+                        this.fta.reset(this.cachedFrames.get(currentFrame));
+                }
+            }
+
+            /** Returns true if end-of-list has been reached */
+            public boolean isEOL() {
+                return this.currentFrame >= this.cachedFrames.size();
+            }
+
+            public void next() {
+                this.currentRecord++;
+                // Skip to next frame if reached end of current frame
+                while (currentRecord >= fta.getTupleCount() && currentFrame < cachedFrames.size()) {
+                    currentFrame++;
+                    if (currentFrame < cachedFrames.size()) {
+                        // Move to next data frame
+                        this.fta.reset(this.cachedFrames.get(currentFrame));
+                        currentRecord = 0;
+                    }
+                }
             }
         }
 

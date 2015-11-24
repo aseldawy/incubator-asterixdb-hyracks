@@ -95,8 +95,7 @@ public class SpatialJoinTest extends AbstractIntegrationTest {
                 DoubleSerializerDeserializer.INSTANCE, DoubleSerializerDeserializer.INSTANCE });
 
         PlaneSweepJoinOperatorDescriptor join = new PlaneSweepJoinOperatorDescriptor(spec, new X1X1Comparator(),
-                new X1X1Comparator(), new X1X2Comparator(), new X1X2Comparator(), outputDesc,
-                new SpatialOverlapPredicate());
+                new X1X2Comparator(), new X1X2Comparator(), outputDesc, new SpatialOverlapPredicate());
         PartitionConstraintHelper.addAbsoluteLocationConstraint(spec, join, NC1_ID);
 
         ResultSetId rsId = new ResultSetId(1);
@@ -159,7 +158,7 @@ public class SpatialJoinTest extends AbstractIntegrationTest {
      * 
      * @author Ahmed Eldawy
      */
-    public static class X1X1Comparator implements ITuplePairComparator, Serializable {
+    public static class X1X2Comparator implements ITuplePairComparator, Serializable {
 
         private static final long serialVersionUID = -5880035679836791236L;
 
@@ -186,7 +185,7 @@ public class SpatialJoinTest extends AbstractIntegrationTest {
      * 
      * @author Ahmed Eldawy
      */
-    public static class X1X2Comparator implements ITuplePairComparator, Serializable {
+    public static class X1X1Comparator implements ITuplePairComparator, Serializable {
 
         private static final long serialVersionUID = -5880035679836791236L;
 
