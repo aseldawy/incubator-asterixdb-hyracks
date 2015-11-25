@@ -84,7 +84,7 @@ public class SpatialJoinTest extends AbstractIntegrationTest {
 
         // Define second input file
         FileSplit[] rect2Splits = new FileSplit[] {
-                new FileSplit(NC1_ID, new FileReference(new File("data/spatial/rects2.sorted.csv"))) };
+                new FileSplit(NC2_ID, new FileReference(new File("data/spatial/rects2.sorted.csv"))) };
         IFileSplitProvider rect2SplitsProvider = new ConstantFileSplitProvider(rect2Splits);
         RecordDescriptor rect2Desc = new RecordDescriptor(
                 new ISerializerDeserializer[] { IntegerSerializerDeserializer.INSTANCE,
@@ -95,7 +95,7 @@ public class SpatialJoinTest extends AbstractIntegrationTest {
                         DoubleParserFactory.INSTANCE, DoubleParserFactory.INSTANCE, DoubleParserFactory.INSTANCE,
                         DoubleParserFactory.INSTANCE }, ','),
                 rect2Desc);
-        PartitionConstraintHelper.addAbsoluteLocationConstraint(spec, rect2Scanner, NC1_ID);
+        PartitionConstraintHelper.addAbsoluteLocationConstraint(spec, rect2Scanner, NC2_ID);
 
         // Define the output file
         RecordDescriptor outputDesc = new RecordDescriptor(new ISerializerDeserializer[] {
@@ -218,7 +218,7 @@ public class SpatialJoinTest extends AbstractIntegrationTest {
         }
     }
 
-    @Test
+    //@Test
     public void shouldWorkOnSortedIntegerDataTest() throws Exception {
         JobSpecification spec = new JobSpecification();
 
@@ -426,7 +426,7 @@ public class SpatialJoinTest extends AbstractIntegrationTest {
         return true;
     }
 
-    @Test
+    //@Test
     public void shouldWorkOnUnsortedDataTest() throws Exception {
         JobSpecification spec = new JobSpecification();
 
@@ -513,7 +513,7 @@ public class SpatialJoinTest extends AbstractIntegrationTest {
         runTestAndCompareResults(spec, new String[] { "data/spatial/result34.csv" });
     }
 
-    @Test
+    //@Test
     public void shouldWorkOnUnsortedBigDataTest() throws Exception {
         JobSpecification spec = new JobSpecification();
 
