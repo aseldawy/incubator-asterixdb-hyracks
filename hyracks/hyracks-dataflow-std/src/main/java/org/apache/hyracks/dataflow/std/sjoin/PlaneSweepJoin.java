@@ -80,7 +80,6 @@ public class PlaneSweepJoin {
                         // Report this pair to answer
                         FrameUtils.appendConcatToWriter(outputWriter, appender, datasets[0].fta,
                                 datasets[0].currentRecord, datasets[1].fta, datasets[1].currentRecord);
-                        System.out.println("Found a matching pair");
                     }
                     // Move to next record in s
                     datasets[1].next();
@@ -107,7 +106,6 @@ public class PlaneSweepJoin {
                         // Report this pair to answer
                         FrameUtils.appendConcatToWriter(outputWriter, appender, datasets[0].fta,
                                 datasets[0].currentRecord, datasets[1].fta, datasets[1].currentRecord);
-                        System.out.println("Found a matching pair");
                     }
                     // Move to next record in r
                     datasets[0].next();

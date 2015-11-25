@@ -273,7 +273,11 @@ public class PlaneSweepJoinOperatorDescriptor extends AbstractOperatorDescriptor
              * Reset the iterator to the last marked position
              */
             public void reset() {
-                this.currentFrame = this.markFrame;
+                if (this.currentFrame != this.markFrame) {
+                    this.currentFrame = this.markFrame;
+                    // Move to this frame
+                    this.fta.reset(this.cachedFrames.get(currentFrame));
+                }
                 this.currentRecord = this.markRecord;
             }
 
