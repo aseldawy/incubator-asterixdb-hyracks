@@ -19,8 +19,6 @@
 package org.apache.hyracks.dataflow.std.sjoin;
 
 import java.nio.ByteBuffer;
-import java.util.ArrayList;
-import java.util.List;
 
 import org.apache.hyracks.api.comm.IFrameWriter;
 import org.apache.hyracks.api.context.IHyracksTaskContext;
@@ -65,6 +63,9 @@ public class PlaneSweepJoinOperatorDescriptor extends AbstractOperatorDescriptor
     /** Compares the left edge of an S record to the right edge of an R record */
     private ITuplePairComparator sx1rx2;
 
+    /** Maximum number of memory frames to cache in each dataset while doing the join */
+    private int memCapacity;
+
     /**
      * Constructs a new plane sweep join operator. The input is two datasets,
      * R and S, and the output is every pair of records (r, s) where the join
@@ -82,11 +83,13 @@ public class PlaneSweepJoinOperatorDescriptor extends AbstractOperatorDescriptor
      *            Compares the left edge of an S record to the right edge of an
      *            R record. This comparator is used to run the plane-sweep algorithm.
      * @param outputDescriptor
+     * @param memCapacity
+     *            Maximum number of data frames to keep in memory while performing the spatial join
      * @param predEvaluator
      */
     public PlaneSweepJoinOperatorDescriptor(IOperatorDescriptorRegistry spec, ITuplePairComparator rx1sx1,
             ITuplePairComparator rx1sx2, ITuplePairComparator sx1rx2, RecordDescriptor outputDescriptor,
-            IPredicateEvaluator predEvaluator) {
+            int memCapacity, IPredicateEvaluator predEvaluator) {
         super(spec, 2, 1);
         this.rx1sx1 = rx1sx1;
         this.rx1sx2 = rx1sx2;
@@ -94,6 +97,7 @@ public class PlaneSweepJoinOperatorDescriptor extends AbstractOperatorDescriptor
         // TODO can I create the output record descriptor here by concatenating
         // the two input descriptors, or do I have to take it as input?
         this.recordDescriptors[0] = outputDescriptor;
+        this.memCapacity = memCapacity;
         this.predEvaluator = predEvaluator;
     }
 
@@ -201,8 +205,8 @@ public class PlaneSweepJoinOperatorDescriptor extends AbstractOperatorDescriptor
          * @author Ahmed Eldawy
          */
         public class CacheFrameWriter implements IFrameWriter {
-            /** All cached frames */
-            private List<ByteBuffer> cachedFrames;
+            /** All cached frames stored in a circular queue */
+            private CircularQueue<ByteBuffer> cachedFrames;
             /** Hyracks context of the running job */
             private IHyracksTaskContext ctx;
 
@@ -238,7 +242,7 @@ public class PlaneSweepJoinOperatorDescriptor extends AbstractOperatorDescriptor
             @Override
             public void open() throws HyracksDataException {
                 // Initialize the in-memory store that will be used to store frames
-                cachedFrames = new ArrayList<ByteBuffer>();
+                cachedFrames = new CircularQueue<ByteBuffer>(memCapacity);
             }
 
             @Override
@@ -246,6 +250,14 @@ public class PlaneSweepJoinOperatorDescriptor extends AbstractOperatorDescriptor
                 // Store this buffer in memory for later use
                 ByteBuffer copyBuffer = ctx.allocateFrame(buffer.capacity());
                 FrameUtils.copyAndFlip(buffer, copyBuffer);
+                if (cachedFrames.isFull()) {
+                    // TODO run the plane-sweep algorithm in case it can free some buffer entries
+
+                    // TODO If after running the plane-sweep, we still cannot find empty entries,
+                    // we should start spilling records to disk.
+                    if (cachedFrames.isFull())
+                        throw new HyracksDataException("Memory full");
+                }
                 cachedFrames.add(copyBuffer);
             }
 
@@ -265,7 +277,10 @@ public class PlaneSweepJoinOperatorDescriptor extends AbstractOperatorDescriptor
              * Put a mark on the current record being accessed
              */
             public void mark() {
-                this.markFrame = this.currentFrame;
+                // This mark indicates that we do not need to get back beyond this point
+                // We can shrink our queue now to accommodate new data frames
+                cachedFrames.removeFirstN(this.currentFrame);
+                this.markFrame = this.currentFrame = 0;
                 this.markRecord = this.currentRecord;
             }
 

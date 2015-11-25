@@ -33,7 +33,6 @@ import org.apache.hyracks.api.constraints.PartitionConstraintHelper;
 import org.apache.hyracks.api.dataflow.IConnectorDescriptor;
 import org.apache.hyracks.api.dataflow.IOperatorDescriptor;
 import org.apache.hyracks.api.dataflow.value.IBinaryComparatorFactory;
-import org.apache.hyracks.api.dataflow.value.IBinaryHashFunctionFactory;
 import org.apache.hyracks.api.dataflow.value.IPredicateEvaluator;
 import org.apache.hyracks.api.dataflow.value.ISerializerDeserializer;
 import org.apache.hyracks.api.dataflow.value.ITuplePairComparator;
@@ -43,7 +42,6 @@ import org.apache.hyracks.api.exceptions.HyracksDataException;
 import org.apache.hyracks.api.io.FileReference;
 import org.apache.hyracks.api.job.JobSpecification;
 import org.apache.hyracks.data.std.accessors.PointableBinaryComparatorFactory;
-import org.apache.hyracks.data.std.accessors.PointableBinaryHashFunctionFactory;
 import org.apache.hyracks.data.std.primitive.IntegerPointable;
 import org.apache.hyracks.dataflow.common.data.marshalling.DoubleSerializerDeserializer;
 import org.apache.hyracks.dataflow.common.data.marshalling.IntegerSerializerDeserializer;
@@ -108,7 +106,7 @@ public class SpatialJoinTest extends AbstractIntegrationTest {
                 DoubleSerializerDeserializer.INSTANCE, DoubleSerializerDeserializer.INSTANCE });
 
         PlaneSweepJoinOperatorDescriptor join = new PlaneSweepJoinOperatorDescriptor(spec, new X1X1ComparatorD(),
-                new X1X2ComparatorD(), new X1X2ComparatorD(), outputDesc, new SpatialOverlapPredicateD());
+                new X1X2ComparatorD(), new X1X2ComparatorD(), outputDesc, 100, new SpatialOverlapPredicateD());
         PartitionConstraintHelper.addAbsoluteLocationConstraint(spec, join, NC1_ID);
 
         ResultSetId rsId = new ResultSetId(1);
@@ -263,7 +261,7 @@ public class SpatialJoinTest extends AbstractIntegrationTest {
                 IntegerSerializerDeserializer.INSTANCE, IntegerSerializerDeserializer.INSTANCE });
 
         PlaneSweepJoinOperatorDescriptor join = new PlaneSweepJoinOperatorDescriptor(spec, new X1X1ComparatorI(),
-                new X1X2ComparatorI(), new X1X2ComparatorI(), outputDesc, new SpatialOverlapPredicateI());
+                new X1X2ComparatorI(), new X1X2ComparatorI(), outputDesc, 100, new SpatialOverlapPredicateI());
         PartitionConstraintHelper.addAbsoluteLocationConstraint(spec, join, NC1_ID);
 
         ResultSetId rsId = new ResultSetId(1);
@@ -427,7 +425,7 @@ public class SpatialJoinTest extends AbstractIntegrationTest {
 
         return true;
     }
-    
+
     @Test
     public void shouldWorkOnUnsortedDataTest() throws Exception {
         JobSpecification spec = new JobSpecification();
@@ -446,7 +444,7 @@ public class SpatialJoinTest extends AbstractIntegrationTest {
                         IntegerParserFactory.INSTANCE }, ','),
                 rect1Desc);
         PartitionConstraintHelper.addAbsoluteLocationConstraint(spec, rect1Scanner, NC1_ID);
-        
+
         // Sort first input file
         ExternalSortOperatorDescriptor sorter1 = new ExternalSortOperatorDescriptor(spec, 10, new int[] { 1 },
                 new IBinaryComparatorFactory[] { PointableBinaryComparatorFactory.of(IntegerPointable.FACTORY) },
@@ -470,7 +468,6 @@ public class SpatialJoinTest extends AbstractIntegrationTest {
         ExternalSortOperatorDescriptor sorter2 = new ExternalSortOperatorDescriptor(spec, 10, new int[] { 1 },
                 new IBinaryComparatorFactory[] { PointableBinaryComparatorFactory.of(IntegerPointable.FACTORY) },
                 rect2Desc);
-        
 
         // Define the output file
         RecordDescriptor outputDesc = new RecordDescriptor(new ISerializerDeserializer[] {
@@ -482,7 +479,7 @@ public class SpatialJoinTest extends AbstractIntegrationTest {
 
         // Create the join operator descriptor
         PlaneSweepJoinOperatorDescriptor join = new PlaneSweepJoinOperatorDescriptor(spec, new X1X1ComparatorI(),
-                new X1X2ComparatorI(), new X1X2ComparatorI(), outputDesc, new SpatialOverlapPredicateI());
+                new X1X2ComparatorI(), new X1X2ComparatorI(), outputDesc, 100, new SpatialOverlapPredicateI());
         PartitionConstraintHelper.addAbsoluteLocationConstraint(spec, join, NC1_ID);
 
         ResultSetId rsId = new ResultSetId(1);
@@ -503,10 +500,10 @@ public class SpatialJoinTest extends AbstractIntegrationTest {
 
         IConnectorDescriptor input3Conn = new OneToOneConnectorDescriptor(spec);
         spec.connect(input3Conn, sorter1, 0, join, 0);
-        
+
         IConnectorDescriptor input4Conn = new OneToOneConnectorDescriptor(spec);
         spec.connect(input4Conn, sorter2, 0, join, 1);
-        
+
         // Connect the output
         IConnectorDescriptor outputConn = new OneToOneConnectorDescriptor(spec);
         spec.connect(outputConn, join, 0, printer, 0);
@@ -516,4 +513,90 @@ public class SpatialJoinTest extends AbstractIntegrationTest {
         runTestAndCompareResults(spec, new String[] { "data/spatial/result34.csv" });
     }
 
+    @Test
+    public void shouldWorkOnUnsortedBigDataTest() throws Exception {
+        JobSpecification spec = new JobSpecification();
+
+        // Define first input file
+        FileSplit[] rect1Splits = new FileSplit[] {
+                new FileSplit(NC1_ID, new FileReference(new File("data/spatial/rects4.csv"))) };
+        IFileSplitProvider rect1SplitsProvider = new ConstantFileSplitProvider(rect1Splits);
+        RecordDescriptor rect1Desc = new RecordDescriptor(
+                new ISerializerDeserializer[] { IntegerSerializerDeserializer.INSTANCE,
+                        IntegerSerializerDeserializer.INSTANCE, IntegerSerializerDeserializer.INSTANCE,
+                        IntegerSerializerDeserializer.INSTANCE, IntegerSerializerDeserializer.INSTANCE });
+        FileScanOperatorDescriptor rect1Scanner = new FileScanOperatorDescriptor(spec, rect1SplitsProvider,
+                new DelimitedDataTupleParserFactory(new IValueParserFactory[] { IntegerParserFactory.INSTANCE,
+                        IntegerParserFactory.INSTANCE, IntegerParserFactory.INSTANCE, IntegerParserFactory.INSTANCE,
+                        IntegerParserFactory.INSTANCE }, ','),
+                rect1Desc);
+        PartitionConstraintHelper.addAbsoluteLocationConstraint(spec, rect1Scanner, NC1_ID);
+
+        // Sort first input file
+        ExternalSortOperatorDescriptor sorter1 = new ExternalSortOperatorDescriptor(spec, 10, new int[] { 1 },
+                new IBinaryComparatorFactory[] { PointableBinaryComparatorFactory.of(IntegerPointable.FACTORY) },
+                rect1Desc);
+
+        // Define second input file
+        FileSplit[] rect2Splits = new FileSplit[] {
+                new FileSplit(NC1_ID, new FileReference(new File("data/spatial/rects5.csv"))) };
+        IFileSplitProvider rect2SplitsProvider = new ConstantFileSplitProvider(rect2Splits);
+        RecordDescriptor rect2Desc = new RecordDescriptor(
+                new ISerializerDeserializer[] { IntegerSerializerDeserializer.INSTANCE,
+                        IntegerSerializerDeserializer.INSTANCE, IntegerSerializerDeserializer.INSTANCE,
+                        IntegerSerializerDeserializer.INSTANCE, IntegerSerializerDeserializer.INSTANCE });
+        FileScanOperatorDescriptor rect2Scanner = new FileScanOperatorDescriptor(spec, rect2SplitsProvider,
+                new DelimitedDataTupleParserFactory(new IValueParserFactory[] { IntegerParserFactory.INSTANCE,
+                        IntegerParserFactory.INSTANCE, IntegerParserFactory.INSTANCE, IntegerParserFactory.INSTANCE,
+                        IntegerParserFactory.INSTANCE }, ','),
+                rect2Desc);
+        PartitionConstraintHelper.addAbsoluteLocationConstraint(spec, rect2Scanner, NC1_ID);
+        // Sort second input file
+        ExternalSortOperatorDescriptor sorter2 = new ExternalSortOperatorDescriptor(spec, 10, new int[] { 1 },
+                new IBinaryComparatorFactory[] { PointableBinaryComparatorFactory.of(IntegerPointable.FACTORY) },
+                rect2Desc);
+
+        // Define the output file
+        RecordDescriptor outputDesc = new RecordDescriptor(new ISerializerDeserializer[] {
+                IntegerSerializerDeserializer.INSTANCE, IntegerSerializerDeserializer.INSTANCE,
+                IntegerSerializerDeserializer.INSTANCE, IntegerSerializerDeserializer.INSTANCE,
+                IntegerSerializerDeserializer.INSTANCE, IntegerSerializerDeserializer.INSTANCE,
+                IntegerSerializerDeserializer.INSTANCE, IntegerSerializerDeserializer.INSTANCE,
+                IntegerSerializerDeserializer.INSTANCE, IntegerSerializerDeserializer.INSTANCE });
+
+        // Create the join operator descriptor
+        PlaneSweepJoinOperatorDescriptor join = new PlaneSweepJoinOperatorDescriptor(spec, new X1X1ComparatorI(),
+                new X1X2ComparatorI(), new X1X2ComparatorI(), outputDesc, 10, new SpatialOverlapPredicateI());
+        PartitionConstraintHelper.addAbsoluteLocationConstraint(spec, join, NC1_ID);
+
+        ResultSetId rsId = new ResultSetId(1);
+        spec.addResultSetId(rsId);
+
+        // Create the sink (output) operator
+        IOperatorDescriptor printer = new ResultWriterOperatorDescriptor(spec, rsId, false, false,
+                ResultSerializerFactoryProvider.INSTANCE.getResultSerializerFactoryProvider());
+
+        PartitionConstraintHelper.addAbsoluteLocationConstraint(spec, printer, NC1_ID);
+
+        // Connect the two inputs
+        IConnectorDescriptor input1Conn = new OneToOneConnectorDescriptor(spec);
+        spec.connect(input1Conn, rect1Scanner, 0, sorter1, 0);
+
+        IConnectorDescriptor input2Conn = new OneToOneConnectorDescriptor(spec);
+        spec.connect(input2Conn, rect2Scanner, 0, sorter2, 0);
+
+        IConnectorDescriptor input3Conn = new OneToOneConnectorDescriptor(spec);
+        spec.connect(input3Conn, sorter1, 0, join, 0);
+
+        IConnectorDescriptor input4Conn = new OneToOneConnectorDescriptor(spec);
+        spec.connect(input4Conn, sorter2, 0, join, 1);
+
+        // Connect the output
+        IConnectorDescriptor outputConn = new OneToOneConnectorDescriptor(spec);
+        spec.connect(outputConn, join, 0, printer, 0);
+
+        spec.addRoot(printer);
+        //runTestAndStoreResult(spec, new File("sj_test_output_i"));
+        runTestAndCompareResults(spec, new String[] { "data/spatial/result45.csv" });
+    }
 }
