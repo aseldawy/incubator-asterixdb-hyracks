@@ -218,7 +218,7 @@ public class SpatialJoinTest extends AbstractIntegrationTest {
         }
     }
 
-    //@Test
+    @Test
     public void shouldWorkOnSortedIntegerDataTest() throws Exception {
         JobSpecification spec = new JobSpecification();
 
@@ -426,7 +426,7 @@ public class SpatialJoinTest extends AbstractIntegrationTest {
         return true;
     }
 
-    //@Test
+    @Test
     public void shouldWorkOnUnsortedDataTest() throws Exception {
         JobSpecification spec = new JobSpecification();
 
@@ -513,7 +513,7 @@ public class SpatialJoinTest extends AbstractIntegrationTest {
         runTestAndCompareResults(spec, new String[] { "data/spatial/result34.csv" });
     }
 
-    //@Test
+    @Test
     public void shouldWorkOnUnsortedBigDataTest() throws Exception {
         JobSpecification spec = new JobSpecification();
 

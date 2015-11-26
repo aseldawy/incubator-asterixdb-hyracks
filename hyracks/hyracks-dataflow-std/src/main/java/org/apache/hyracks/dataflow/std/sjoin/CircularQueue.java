@@ -120,4 +120,10 @@ public class CircularQueue<E> {
         q.add(12);
         System.out.println(q);
     }
+
+    public void clear() {
+        for (int i = 0; i < elements.length; i++)
+            elements[i] = null; // For the GC to collect these objects
+        this.head = -1;
+    }
 }

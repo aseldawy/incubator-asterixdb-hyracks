@@ -66,12 +66,19 @@ public class CachedFrameWriter implements IFrameWriter {
 
     @Override
     public void nextFrame(ByteBuffer buffer) throws HyracksDataException {
-        System.out.println("Thread#" + Thread.currentThread().getId() + ": Received a frame at " + this);
         // Store this buffer in memory for later use
         ByteBuffer copyBuffer = ctx.allocateFrame(buffer.capacity());
         FrameUtils.copyAndFlip(buffer, copyBuffer);
         if (cachedFrames.isFull()) {
-            // TODO run the plane-sweep algorithm in case it can free some buffer entries
+            // run the plane-sweep algorithm in case it can free some buffer entries
+            try {
+                owner.getPlaneSweepJoin().planesweepJoin(this);
+                if (owner.getPlaneSweepJoin().getState() == PlaneSweepJoin.SJ_State.SJ_FINISHED) {
+                    this.clear();
+                }
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
 
             // TODO If after running the plane-sweep, we still cannot find empty entries,
             // we should start spilling records to disk.
@@ -92,9 +99,7 @@ public class CachedFrameWriter implements IFrameWriter {
         // Marks the end of stream
         reachedEndOfStream = true;
         try {
-            System.out.println(Thread.currentThread().getName() + ": call the SJ algorithm");
             owner.getPlaneSweepJoin().planesweepJoin(this);
-            System.out.println(Thread.currentThread().getName() + ": done");
         } catch (InterruptedException e) {
             e.printStackTrace();
         }
@@ -174,5 +179,20 @@ public class CachedFrameWriter implements IFrameWriter {
      */
     public boolean canGrowInMemory() {
         return !cachedFrames.isFull() && !reachedEndOfStream;
+    }
+
+    /**
+     * Tells whether this dataset has read received and cached all of its records
+     * or not. This method return true only after the underling {@link IFrameWriter#close()}
+     * has been called.
+     * 
+     * @return
+     */
+    public boolean isComplete() {
+        return reachedEndOfStream;
+    }
+
+    public void clear() {
+        this.cachedFrames.clear();
     }
 }

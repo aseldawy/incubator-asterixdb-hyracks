@@ -53,7 +53,7 @@ public class PlaneSweepJoin {
      * 
      * @author Ahmed Eldawy
      */
-    enum SJ_State {
+    public enum SJ_State {
         /** The spatial join algorithm did not start yet */
         SJ_NOT_STARTED,
         /** The current record in dataset 0 is active and needs to be tested with more records in dataset 1 */
@@ -140,7 +140,7 @@ public class PlaneSweepJoin {
         // Wait until the other dataset can no longer grow in memory before
         // starting the join subroutine
         if (otherDataset.canGrowInMemory()) {
-            //            this.wait();
+            this.wait();
             // At this point, the join subroutine must have been called by the
             // other thread and we no longer need to run it. The calling method
             // will decide to either continue receiving input frames (if fullDataset.canGrowInMemory() is true),
@@ -149,7 +149,7 @@ public class PlaneSweepJoin {
         }
 
         if (sjState == SJ_State.SJ_NOT_STARTED) {
-            // First time starting the jon subroutine
+            // First time starting the join subroutine
             datasets[0].init();
             datasets[1].init();
             this.sjState = SJ_State.SJ_NOT_ACTIVE;
@@ -159,6 +159,7 @@ public class PlaneSweepJoin {
             // Move the sweep line to the lower of the two current records
             if (rx1sx1.compare(datasets[0].fta, datasets[0].currentRecord, datasets[1].fta,
                     datasets[1].currentRecord) < 0) {
+                sjState = SJ_State.SJ_DATASET0_ACTIVE;
                 // Sweep line stops at an r record (dataset 0)
                 // Current r record is called the active record
                 // Scan records in dataset 1 until we pass the right
@@ -184,7 +185,9 @@ public class PlaneSweepJoin {
                 datasets[1].reset();
                 // Move to the next record in dataset 0
                 datasets[0].next();
+                datasets[0].mark(); // Will never need to go back again
             } else {
+                sjState = SJ_State.SJ_DATASET1_ACTIVE;
                 // Sweep line stops at an s record (dataset 1)
                 // Current s record is called the active record
                 // Scan records in dataset 0 until we pass the right
@@ -210,15 +213,28 @@ public class PlaneSweepJoin {
                 datasets[0].reset();
                 // Move to the next record in dataset 0
                 datasets[1].next();
+                datasets[1].mark(); // Will never need to go back again
             }
+            sjState = SJ_State.SJ_NOT_ACTIVE;
         }
+
+        // If we are completely done with one of the datasets, we don't need to continue
+        if ((datasets[0].isComplete() && datasets[0].noMoreImmediatelyAvailableRecords())
+                || (datasets[1].isComplete() && datasets[1].noMoreImmediatelyAvailableRecords()))
+            sjState = SJ_State.SJ_FINISHED;
 
         if (sjState == SJ_State.SJ_FINISHED) {
             appender.flush(outputWriter, true);
+            datasets[0].clear();
+            datasets[1].clear();
             outputWriter.close();
         }
 
         // To wake up the other thread
         this.notify();
+    }
+
+    public SJ_State getState() {
+        return sjState;
     }
 }

@@ -62,6 +62,9 @@ public class PlaneSweepJoinOperatorDescriptor extends AbstractOperatorDescriptor
     /** Maximum number of memory frames to cache in each dataset while doing the join */
     private int memCapacity;
 
+    /** The underlying instance of the plane-sweep join algorithm */
+    private PlaneSweepJoin planeSweepJoin;
+
     /**
      * Constructs a new plane sweep join operator. The input is two datasets,
      * R and S, and the output is every pair of records (r, s) where the join
@@ -193,7 +196,7 @@ public class PlaneSweepJoinOperatorDescriptor extends AbstractOperatorDescriptor
             return memCapacity;
         }
 
-        public PlaneSweepJoin getPlaneSweepJoin() throws HyracksDataException {
+        public synchronized PlaneSweepJoin getPlaneSweepJoin() throws HyracksDataException {
             if (planeSweepJoin == null) {
                 // Initialize the plane-sweep join helper class
                 planeSweepJoin = new PlaneSweepJoin(ctx, datasets, outputWriter, rx1sx1, rx1sx2, sx1rx2, predEvaluator);
