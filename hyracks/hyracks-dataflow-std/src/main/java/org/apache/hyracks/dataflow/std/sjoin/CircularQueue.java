@@ -101,26 +101,6 @@ public class CircularQueue<E> {
         return str;
     }
 
-    public static void main(String[] args) {
-        CircularQueue<Integer> q = new CircularQueue<>(4);
-        q.add(5);
-        q.add(6);
-        q.add(7);
-        q.add(8);
-        System.out.println(q);
-        q.removeFirstN(3);
-        System.out.println(q);
-        q.add(9);
-        System.out.println(q);
-        q.add(10);
-        System.out.println(q);
-        q.removeFirstN(3);
-        System.out.println(q);
-        q.add(11);
-        q.add(12);
-        System.out.println(q);
-    }
-
     public void clear() {
         for (int i = 0; i < elements.length; i++)
             elements[i] = null; // For the GC to collect these objects

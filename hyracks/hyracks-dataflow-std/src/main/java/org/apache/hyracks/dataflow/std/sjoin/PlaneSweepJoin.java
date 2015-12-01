@@ -46,6 +46,8 @@ public class PlaneSweepJoin {
     private ITuplePairComparator rx1sx2;
     private ITuplePairComparator sx1rx2;
     private IPredicateEvaluator predEvaluator;
+    /** The appender used to write output records */
+    private FrameTupleAppender appender;
 
     /**
      * An enumerated type that stores the current state of the spatial join
@@ -68,8 +70,6 @@ public class PlaneSweepJoin {
 
     /** Current state of the spatial join algorithm */
     private SJ_State sjState;
-    /** The appender used to write output records */
-    private FrameTupleAppender appender;
 
     /**
      * @param ctx
