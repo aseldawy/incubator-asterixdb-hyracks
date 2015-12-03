@@ -24,7 +24,6 @@ import java.util.LinkedList;
 import java.util.List;
 
 import org.apache.commons.lang3.mutable.Mutable;
-
 import org.apache.hyracks.algebricks.common.exceptions.AlgebricksException;
 import org.apache.hyracks.algebricks.core.algebra.base.ILogicalExpression;
 import org.apache.hyracks.algebricks.core.algebra.base.ILogicalOperator;
@@ -35,6 +34,7 @@ import org.apache.hyracks.algebricks.core.algebra.expressions.AbstractFunctionCa
 import org.apache.hyracks.algebricks.core.algebra.expressions.BroadcastExpressionAnnotation;
 import org.apache.hyracks.algebricks.core.algebra.expressions.BroadcastExpressionAnnotation.BroadcastSide;
 import org.apache.hyracks.algebricks.core.algebra.expressions.IExpressionAnnotation;
+import org.apache.hyracks.algebricks.core.algebra.expressions.IVariableTypeEnvironment;
 import org.apache.hyracks.algebricks.core.algebra.expressions.VariableReferenceExpression;
 import org.apache.hyracks.algebricks.core.algebra.functions.AlgebricksBuiltinFunctions;
 import org.apache.hyracks.algebricks.core.algebra.functions.AlgebricksBuiltinFunctions.ComparisonKind;
@@ -45,6 +45,7 @@ import org.apache.hyracks.algebricks.core.algebra.operators.physical.AbstractJoi
 import org.apache.hyracks.algebricks.core.algebra.operators.physical.HybridHashJoinPOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.physical.InMemoryHashJoinPOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.physical.NLJoinPOperator;
+import org.apache.hyracks.algebricks.core.algebra.operators.physical.PlaneSweepPOperator;
 import org.apache.hyracks.algebricks.core.algebra.properties.ILogicalPropertiesVector;
 import org.apache.hyracks.algebricks.core.config.AlgebricksConfig;
 
@@ -77,24 +78,26 @@ public class JoinUtils {
                         setHashJoinOp(op, JoinPartitioningType.PAIRWISE, sideLeft, sideRight, context);
                 }
             }
+        } else if (isSpatialJoinCondition(op, context)) {
+            setSpatialJoinOp(op, context);
         } else {
             setNLJoinOp(op, context);
         }
     }
 
     private static void setNLJoinOp(AbstractBinaryJoinOperator op, IOptimizationContext context) {
-        op.setPhysicalOperator(new NLJoinPOperator(op.getJoinKind(), JoinPartitioningType.BROADCAST, context
-                .getPhysicalOptimizationConfig().getMaxRecordsPerFrame()));
+        op.setPhysicalOperator(new NLJoinPOperator(op.getJoinKind(), JoinPartitioningType.BROADCAST,
+                context.getPhysicalOptimizationConfig().getMaxRecordsPerFrame()));
     }
 
     private static void setHashJoinOp(AbstractBinaryJoinOperator op, JoinPartitioningType partitioningType,
             List<LogicalVariable> sideLeft, List<LogicalVariable> sideRight, IOptimizationContext context)
-            throws AlgebricksException {
+                    throws AlgebricksException {
         op.setPhysicalOperator(new HybridHashJoinPOperator(op.getJoinKind(), partitioningType, sideLeft, sideRight,
-                context.getPhysicalOptimizationConfig().getMaxFramesHybridHash(), context
-                        .getPhysicalOptimizationConfig().getMaxFramesLeftInputHybridHash(), context
-                        .getPhysicalOptimizationConfig().getMaxRecordsPerFrame(), context
-                        .getPhysicalOptimizationConfig().getFudgeFactor()));
+                context.getPhysicalOptimizationConfig().getMaxFramesHybridHash(),
+                context.getPhysicalOptimizationConfig().getMaxFramesLeftInputHybridHash(),
+                context.getPhysicalOptimizationConfig().getMaxRecordsPerFrame(),
+                context.getPhysicalOptimizationConfig().getFudgeFactor()));
         if (partitioningType == JoinPartitioningType.BROADCAST) {
             hybridToInMemHashJoin(op, context);
         }
@@ -109,17 +112,17 @@ public class JoinUtils {
         ILogicalOperator opBuild = op.getInputs().get(1).getValue();
         LogicalPropertiesVisitor.computeLogicalPropertiesDFS(opBuild, context);
         ILogicalPropertiesVector v = context.getLogicalPropertiesVector(opBuild);
-        AlgebricksConfig.ALGEBRICKS_LOGGER.fine("// HybridHashJoin inner branch -- Logical properties for " + opBuild
-                + ": " + v + "\n");
+        AlgebricksConfig.ALGEBRICKS_LOGGER
+                .fine("// HybridHashJoin inner branch -- Logical properties for " + opBuild + ": " + v + "\n");
         if (v != null) {
             int size2 = v.getMaxOutputFrames();
             HybridHashJoinPOperator hhj = (HybridHashJoinPOperator) op.getPhysicalOperator();
             if (size2 > 0 && size2 * hhj.getFudgeFactor() <= hhj.getMemSizeInFrames()) {
-                AlgebricksConfig.ALGEBRICKS_LOGGER.fine("// HybridHashJoin inner branch " + opBuild
-                        + " fits in memory\n");
+                AlgebricksConfig.ALGEBRICKS_LOGGER
+                        .fine("// HybridHashJoin inner branch " + opBuild + " fits in memory\n");
                 // maintains the local properties on the probe side
-                op.setPhysicalOperator(new InMemoryHashJoinPOperator(hhj.getKind(), hhj.getPartitioningType(), hhj
-                        .getKeysLeftBranch(), hhj.getKeysRightBranch(), v.getNumberOfTuples() * 2));
+                op.setPhysicalOperator(new InMemoryHashJoinPOperator(hhj.getKind(), hhj.getPartitioningType(),
+                        hhj.getKeysLeftBranch(), hhj.getKeysRightBranch(), v.getNumberOfTuples() * 2));
             }
         }
 
@@ -134,8 +137,7 @@ public class JoinUtils {
                 FunctionIdentifier fi = fexp.getFunctionIdentifier();
                 if (fi.equals(AlgebricksBuiltinFunctions.AND)) {
                     for (Mutable<ILogicalExpression> a : fexp.getArguments()) {
-                        if (!isHashJoinCondition(a.getValue(), inLeftAll, inRightAll, outLeftFields,
-                                outRightFields)) {
+                        if (!isHashJoinCondition(a.getValue(), inLeftAll, inRightAll, outLeftFields, outRightFields)) {
                             return false;
                         }
                     }
@@ -211,4 +213,45 @@ public class JoinUtils {
             return null;
         }
     }
+
+    /**
+     * Tests if the join condition can be executed using the PBSM spatial join operation.
+     * For now, the only spatial join condition is "spatial-intersect" function between
+     * two rectangles. In the future, it should cover more spatial data types and predicates.
+     * 
+     * @param e
+     * @return
+     * @throws AlgebricksException
+     */
+    private static boolean isSpatialJoinCondition(AbstractBinaryJoinOperator op, IOptimizationContext context)
+            throws AlgebricksException {
+        ILogicalExpression e = op.getCondition().getValue();
+        // The expression has to be a function call
+        if (e.getExpressionTag() != LogicalExpressionTag.FUNCTION_CALL)
+            return false;
+        // And the called function must be the "spatial-intersect" function (for now)
+        AbstractFunctionCallExpression fexp = (AbstractFunctionCallExpression) e;
+        FunctionIdentifier fi = fexp.getFunctionIdentifier();
+        if (!fi.getName().equals("spatial-intersect"))
+            return false;
+        // Finally, the two operands of that function should be of type rectangles (for now)
+        IVariableTypeEnvironment typeEnv = context.getOutputTypeEnvironment(op);
+        Object leftOperand = typeEnv.getType(fexp.getArguments().get(0).getValue());
+        Object rightOperand = typeEnv.getType(fexp.getArguments().get(1).getValue());
+        //if (leftOperand != BuiltinType.ARECTANGLE)
+        if (!leftOperand.toString().equals("RECTANGLE") || !rightOperand.toString().equals("RECTANGLE"))
+            return false;
+        // All conditions met, it is a spatial join case
+        return false;
+    }
+
+    private static void setSpatialJoinOp(AbstractBinaryJoinOperator op, IOptimizationContext context)
+            throws AlgebricksException {
+        List<LogicalVariable> varsLeft = op.getInputs().get(0).getValue().getSchema();
+        List<LogicalVariable> varsRight = op.getInputs().get(1).getValue().getSchema();
+        int memCapacity = context.getPhysicalOptimizationConfig().getMaxRecordsPerFrame();
+
+        op.setPhysicalOperator(new PlaneSweepPOperator(varsLeft.get(0), varsRight.get(0)));
+    }
+
 }
