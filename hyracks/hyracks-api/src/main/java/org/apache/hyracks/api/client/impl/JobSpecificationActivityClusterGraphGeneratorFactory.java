@@ -103,8 +103,8 @@ public class JobSpecificationActivityClusterGraphGeneratorFactory implements IAc
         return new IActivityClusterGraphGenerator() {
             @Override
             public ActivityClusterGraph initialize() {
-                //ActivityClusterGraphRewriter rewriter = new ActivityClusterGraphRewriter();
-                //rewriter.rewrite(acg);
+                ActivityClusterGraphRewriter rewriter = new ActivityClusterGraphRewriter();
+                rewriter.rewrite(acg);
                 return acg;
             }
 
