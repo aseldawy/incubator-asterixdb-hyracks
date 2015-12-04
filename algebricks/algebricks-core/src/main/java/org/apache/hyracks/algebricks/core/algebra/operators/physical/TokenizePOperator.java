@@ -37,6 +37,7 @@ import org.apache.hyracks.algebricks.core.algebra.operators.logical.AbstractLogi
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.IOperatorSchema;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.InsertDeleteOperator.Kind;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.TokenizeOperator;
+import org.apache.hyracks.algebricks.core.algebra.operators.logical.TokenizeOperator.OperationMode;
 import org.apache.hyracks.algebricks.core.algebra.properties.IPhysicalPropertiesVector;
 import org.apache.hyracks.algebricks.core.algebra.properties.PhysicalRequirements;
 import org.apache.hyracks.algebricks.core.algebra.properties.StructuralPropertiesVector;
@@ -51,12 +52,24 @@ public class TokenizePOperator extends AbstractPhysicalOperator {
     private final List<LogicalVariable> primaryKeys;
     private final List<LogicalVariable> secondaryKeys;
     private final IDataSourceIndex<?, ?> dataSourceIndex;
+    /** Type of fields that are tokenized */
+    private List<Object> typesOfFieldToTokenize;
+    private final TokenizeOperator.OperationMode operationMode;
 
     public TokenizePOperator(List<LogicalVariable> primaryKeys, List<LogicalVariable> secondaryKeys,
             IDataSourceIndex<?, ?> dataSourceIndex) {
         this.primaryKeys = primaryKeys;
         this.secondaryKeys = secondaryKeys;
         this.dataSourceIndex = dataSourceIndex;
+        this.operationMode = OperationMode.INDEX;
+    }
+
+    public TokenizePOperator(List<LogicalVariable> fieldToTokenize, List<Object> typesOfFieldToTokenize) {
+        this.primaryKeys = fieldToTokenize;
+        this.typesOfFieldToTokenize = typesOfFieldToTokenize;
+        this.secondaryKeys = null;
+        this.dataSourceIndex = null;
+        this.operationMode = OperationMode.TOKENIZE;
     }
 
     @Override
@@ -80,24 +93,47 @@ public class TokenizePOperator extends AbstractPhysicalOperator {
     @Override
     public void contributeRuntimeOperator(IHyracksJobBuilder builder, JobGenContext context, ILogicalOperator op,
             IOperatorSchema propagatedSchema, IOperatorSchema[] inputSchemas, IOperatorSchema outerPlanSchema)
-            throws AlgebricksException {
+                    throws AlgebricksException {
         TokenizeOperator tokenizeOp = (TokenizeOperator) op;
-        if (tokenizeOp.getOperation() != Kind.INSERT || !tokenizeOp.isBulkload()) {
-            throw new AlgebricksException("Tokenize Operator only works when bulk-loading data.");
-        }
-
         IMetadataProvider mp = context.getMetadataProvider();
         IVariableTypeEnvironment typeEnv = context.getTypeEnvironment(op);
         JobSpecification spec = builder.getJobSpec();
-        RecordDescriptor inputDesc = JobGenHelper.mkRecordDescriptor(
-                context.getTypeEnvironment(op.getInputs().get(0).getValue()), inputSchemas[0], context);
-        Pair<IOperatorDescriptor, AlgebricksPartitionConstraint> runtimeAndConstraints = mp.getTokenizerRuntime(
-                dataSourceIndex, propagatedSchema, inputSchemas, typeEnv, primaryKeys, secondaryKeys, null, inputDesc,
-                context, spec, true);
-        builder.contributeHyracksOperator(tokenizeOp, runtimeAndConstraints.first);
-        builder.contributeAlgebricksPartitionConstraint(runtimeAndConstraints.first, runtimeAndConstraints.second);
-        ILogicalOperator src = tokenizeOp.getInputs().get(0).getValue();
-        builder.contributeGraphEdge(src, 0, tokenizeOp, 0);
+        switch (operationMode) {
+            case INDEX: {
+                if (tokenizeOp.getOperation() != Kind.INSERT || !tokenizeOp.isBulkload()) {
+                    throw new AlgebricksException("Tokenize Operator only works when bulk-loading data.");
+                }
+
+                RecordDescriptor inputDesc = JobGenHelper.mkRecordDescriptor(
+                        context.getTypeEnvironment(op.getInputs().get(0).getValue()), inputSchemas[0], context);
+                Pair<IOperatorDescriptor, AlgebricksPartitionConstraint> runtimeAndConstraints = mp.getTokenizerRuntime(
+                        dataSourceIndex, propagatedSchema, inputSchemas, typeEnv, primaryKeys, secondaryKeys, null,
+                        inputDesc, context, spec, true);
+                builder.contributeHyracksOperator(tokenizeOp, runtimeAndConstraints.first);
+                builder.contributeAlgebricksPartitionConstraint(runtimeAndConstraints.first,
+                        runtimeAndConstraints.second);
+                ILogicalOperator src = tokenizeOp.getInputs().get(0).getValue();
+                builder.contributeGraphEdge(src, 0, tokenizeOp, 0);
+                break;
+            }
+            case TOKENIZE: {
+                RecordDescriptor inputDesc = JobGenHelper.mkRecordDescriptor(
+                        context.getTypeEnvironment(op.getInputs().get(0).getValue()), inputSchemas[0], context);
+                Pair<IOperatorDescriptor, AlgebricksPartitionConstraint> runtimeAndConstraints = mp
+                        .getTokenizerRuntime(primaryKeys);
+                Pair<IOperatorDescriptor, AlgebricksPartitionConstraint> runtimeAndConstraints = mp.getTokenizerRuntime(
+                        dataSourceIndex, propagatedSchema, inputSchemas, typeEnv, primaryKeys, secondaryKeys, null,
+                        inputDesc, context, spec, true);
+                builder.contributeHyracksOperator(tokenizeOp, runtimeAndConstraints.first);
+                builder.contributeAlgebricksPartitionConstraint(runtimeAndConstraints.first,
+                        runtimeAndConstraints.second);
+                ILogicalOperator src = tokenizeOp.getInputs().get(0).getValue();
+                builder.contributeGraphEdge(src, 0, tokenizeOp, 0);
+                break;
+            }
+            default:
+                throw new RuntimeException("Unsupported operation mode: " + operationMode);
+        }
     }
 
     @Override

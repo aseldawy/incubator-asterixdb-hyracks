@@ -69,7 +69,7 @@ public class SpatialJoinTest extends AbstractIntegrationTest {
 
         // Define first input file
         FileSplit[] rect1Splits = new FileSplit[] {
-                new FileSplit(NC1_ID, new FileReference(new File("data/spatial/rects1.sorted.csv"))) };
+                new FileSplit(NC1_ID, new FileReference(new File("data/spatial/rects1.sorted.txt"))) };
         IFileSplitProvider rect1SplitsProvider = new ConstantFileSplitProvider(rect1Splits);
         RecordDescriptor rect1Desc = new RecordDescriptor(
                 new ISerializerDeserializer[] { IntegerSerializerDeserializer.INSTANCE,
@@ -84,7 +84,7 @@ public class SpatialJoinTest extends AbstractIntegrationTest {
 
         // Define second input file
         FileSplit[] rect2Splits = new FileSplit[] {
-                new FileSplit(NC2_ID, new FileReference(new File("data/spatial/rects2.sorted.csv"))) };
+                new FileSplit(NC2_ID, new FileReference(new File("data/spatial/rects2.sorted.txt"))) };
         IFileSplitProvider rect2SplitsProvider = new ConstantFileSplitProvider(rect2Splits);
         RecordDescriptor rect2Desc = new RecordDescriptor(
                 new ISerializerDeserializer[] { IntegerSerializerDeserializer.INSTANCE,
@@ -133,7 +133,7 @@ public class SpatialJoinTest extends AbstractIntegrationTest {
 
         spec.addRoot(printer);
         //runTestAndStoreResult(spec, new File("sj_test_output"));
-        runTestAndCompareResults(spec, new String[] { "data/spatial/result12.csv" });
+        runTestAndCompareResults(spec, new String[] { "data/spatial/result12.txt" });
     }
 
     /**
@@ -224,7 +224,7 @@ public class SpatialJoinTest extends AbstractIntegrationTest {
 
         // Define first input file
         FileSplit[] rect1Splits = new FileSplit[] {
-                new FileSplit(NC1_ID, new FileReference(new File("data/spatial/rects1.sorted.csv"))) };
+                new FileSplit(NC1_ID, new FileReference(new File("data/spatial/rects1.sorted.txt"))) };
         IFileSplitProvider rect1SplitsProvider = new ConstantFileSplitProvider(rect1Splits);
         RecordDescriptor rect1Desc = new RecordDescriptor(
                 new ISerializerDeserializer[] { IntegerSerializerDeserializer.INSTANCE,
@@ -239,7 +239,7 @@ public class SpatialJoinTest extends AbstractIntegrationTest {
 
         // Define second input file
         FileSplit[] rect2Splits = new FileSplit[] {
-                new FileSplit(NC1_ID, new FileReference(new File("data/spatial/rects2.sorted.csv"))) };
+                new FileSplit(NC1_ID, new FileReference(new File("data/spatial/rects2.sorted.txt"))) };
         IFileSplitProvider rect2SplitsProvider = new ConstantFileSplitProvider(rect2Splits);
         RecordDescriptor rect2Desc = new RecordDescriptor(
                 new ISerializerDeserializer[] { IntegerSerializerDeserializer.INSTANCE,
@@ -288,7 +288,7 @@ public class SpatialJoinTest extends AbstractIntegrationTest {
 
         spec.addRoot(printer);
         //runTestAndStoreResult(spec, new File("sj_test_output_i"));
-        runTestAndCompareResults(spec, new String[] { "data/spatial/result12.csv" });
+        runTestAndCompareResults(spec, new String[] { "data/spatial/result12.txt" });
     }
 
     /**
@@ -432,7 +432,7 @@ public class SpatialJoinTest extends AbstractIntegrationTest {
 
         // Define first input file
         FileSplit[] rect1Splits = new FileSplit[] {
-                new FileSplit(NC1_ID, new FileReference(new File("data/spatial/rects3.csv"))) };
+                new FileSplit(NC1_ID, new FileReference(new File("data/spatial/rects3.txt"))) };
         IFileSplitProvider rect1SplitsProvider = new ConstantFileSplitProvider(rect1Splits);
         RecordDescriptor rect1Desc = new RecordDescriptor(
                 new ISerializerDeserializer[] { IntegerSerializerDeserializer.INSTANCE,
@@ -452,7 +452,7 @@ public class SpatialJoinTest extends AbstractIntegrationTest {
 
         // Define second input file
         FileSplit[] rect2Splits = new FileSplit[] {
-                new FileSplit(NC1_ID, new FileReference(new File("data/spatial/rects4.csv"))) };
+                new FileSplit(NC1_ID, new FileReference(new File("data/spatial/rects4.txt"))) };
         IFileSplitProvider rect2SplitsProvider = new ConstantFileSplitProvider(rect2Splits);
         RecordDescriptor rect2Desc = new RecordDescriptor(
                 new ISerializerDeserializer[] { IntegerSerializerDeserializer.INSTANCE,
@@ -510,7 +510,7 @@ public class SpatialJoinTest extends AbstractIntegrationTest {
 
         spec.addRoot(printer);
         //runTestAndStoreResult(spec, new File("sj_test_output_i"));
-        runTestAndCompareResults(spec, new String[] { "data/spatial/result34.csv" });
+        runTestAndCompareResults(spec, new String[] { "data/spatial/result34.txt" });
     }
 
     @Test
@@ -519,7 +519,7 @@ public class SpatialJoinTest extends AbstractIntegrationTest {
 
         // Define first input file
         FileSplit[] rect1Splits = new FileSplit[] {
-                new FileSplit(NC1_ID, new FileReference(new File("data/spatial/rects4.csv"))) };
+                new FileSplit(NC1_ID, new FileReference(new File("data/spatial/rects4.txt"))) };
         IFileSplitProvider rect1SplitsProvider = new ConstantFileSplitProvider(rect1Splits);
         RecordDescriptor rect1Desc = new RecordDescriptor(
                 new ISerializerDeserializer[] { IntegerSerializerDeserializer.INSTANCE,
@@ -539,7 +539,7 @@ public class SpatialJoinTest extends AbstractIntegrationTest {
 
         // Define second input file
         FileSplit[] rect2Splits = new FileSplit[] {
-                new FileSplit(NC1_ID, new FileReference(new File("data/spatial/rects5.csv"))) };
+                new FileSplit(NC1_ID, new FileReference(new File("data/spatial/rects5.txt"))) };
         IFileSplitProvider rect2SplitsProvider = new ConstantFileSplitProvider(rect2Splits);
         RecordDescriptor rect2Desc = new RecordDescriptor(
                 new ISerializerDeserializer[] { IntegerSerializerDeserializer.INSTANCE,
@@ -597,6 +597,6 @@ public class SpatialJoinTest extends AbstractIntegrationTest {
 
         spec.addRoot(printer);
         //runTestAndStoreResult(spec, new File("sj_test_output_i"));
-        runTestAndCompareResults(spec, new String[] { "data/spatial/result45.csv" });
+        runTestAndCompareResults(spec, new String[] { "data/spatial/result45.txt" });
     }
 }

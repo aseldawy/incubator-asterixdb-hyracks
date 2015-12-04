@@ -95,7 +95,8 @@ public class SetAlgebricksPhysicalOperatorsRule implements IAlgebraicRewriteRule
     }
 
     @Override
-    public boolean rewritePre(Mutable<ILogicalOperator> opRef, IOptimizationContext context) throws AlgebricksException {
+    public boolean rewritePre(Mutable<ILogicalOperator> opRef, IOptimizationContext context)
+            throws AlgebricksException {
         AbstractLogicalOperator op = (AbstractLogicalOperator) opRef.getValue();
         // if (context.checkIfInDontApplySet(this, op)) {
         // return false;
@@ -152,8 +153,8 @@ public class SetAlgebricksPhysicalOperatorsRule implements IAlgebraicRewriteRule
                     if (gby.getNestedPlans().size() == 1) {
                         ILogicalPlan p0 = gby.getNestedPlans().get(0);
                         if (p0.getRoots().size() == 1) {
-                            if (gby.getAnnotations().get(OperatorAnnotations.USE_HASH_GROUP_BY) == Boolean.TRUE
-                                    || gby.getAnnotations().get(OperatorAnnotations.USE_EXTERNAL_GROUP_BY) == Boolean.TRUE) {
+                            if (gby.getAnnotations().get(OperatorAnnotations.USE_HASH_GROUP_BY) == Boolean.TRUE || gby
+                                    .getAnnotations().get(OperatorAnnotations.USE_EXTERNAL_GROUP_BY) == Boolean.TRUE) {
                                 if (!topLevelOp) {
                                     throw new NotImplementedException(
                                             "External hash group-by for nested grouping is not implemented.");
@@ -213,8 +214,8 @@ public class SetAlgebricksPhysicalOperatorsRule implements IAlgebraicRewriteRule
                         }
                     }
                     if (topLevelOp) {
-                        op.setPhysicalOperator(new StableSortPOperator(physicalOptimizationConfig
-                                .getMaxFramesExternalSort()));
+                        op.setPhysicalOperator(
+                                new StableSortPOperator(physicalOptimizationConfig.getMaxFramesExternalSort()));
                     } else {
                         op.setPhysicalOperator(new InMemoryStableSortPOperator());
                     }
@@ -282,8 +283,8 @@ public class SetAlgebricksPhysicalOperatorsRule implements IAlgebraicRewriteRule
                         additionalFilteringKeys = new ArrayList<LogicalVariable>();
                         getKeys(opLoad.getAdditionalFilteringExpressions(), additionalFilteringKeys);
                     }
-                    op.setPhysicalOperator(new WriteResultPOperator(opLoad.getDataSource(), payload, keys,
-                            additionalFilteringKeys));
+                    op.setPhysicalOperator(
+                            new WriteResultPOperator(opLoad.getDataSource(), payload, keys, additionalFilteringKeys));
                     break;
                 }
                 case INSERT_DELETE: {
@@ -297,11 +298,11 @@ public class SetAlgebricksPhysicalOperatorsRule implements IAlgebraicRewriteRule
                         getKeys(opLoad.getAdditionalFilteringExpressions(), additionalFilteringKeys);
                     }
                     if (opLoad.isBulkload()) {
-                        op.setPhysicalOperator(new BulkloadPOperator(payload, keys, additionalFilteringKeys, opLoad
-                                .getDataSource()));
+                        op.setPhysicalOperator(
+                                new BulkloadPOperator(payload, keys, additionalFilteringKeys, opLoad.getDataSource()));
                     } else {
-                        op.setPhysicalOperator(new InsertDeletePOperator(payload, keys, additionalFilteringKeys, opLoad
-                                .getDataSource()));
+                        op.setPhysicalOperator(new InsertDeletePOperator(payload, keys, additionalFilteringKeys,
+                                opLoad.getDataSource()));
                     }
                     break;
                 }
@@ -317,11 +318,13 @@ public class SetAlgebricksPhysicalOperatorsRule implements IAlgebraicRewriteRule
                         getKeys(opInsDel.getAdditionalFilteringExpressions(), additionalFilteringKeys);
                     }
                     if (opInsDel.isBulkload()) {
-                        op.setPhysicalOperator(new IndexBulkloadPOperator(primaryKeys, secondaryKeys,
-                                additionalFilteringKeys, opInsDel.getFilterExpression(), opInsDel.getDataSourceIndex()));
+                        op.setPhysicalOperator(
+                                new IndexBulkloadPOperator(primaryKeys, secondaryKeys, additionalFilteringKeys,
+                                        opInsDel.getFilterExpression(), opInsDel.getDataSourceIndex()));
                     } else {
-                        op.setPhysicalOperator(new IndexInsertDeletePOperator(primaryKeys, secondaryKeys,
-                                additionalFilteringKeys, opInsDel.getFilterExpression(), opInsDel.getDataSourceIndex()));
+                        op.setPhysicalOperator(
+                                new IndexInsertDeletePOperator(primaryKeys, secondaryKeys, additionalFilteringKeys,
+                                        opInsDel.getFilterExpression(), opInsDel.getDataSourceIndex()));
                     }
 
                     break;
@@ -329,14 +332,26 @@ public class SetAlgebricksPhysicalOperatorsRule implements IAlgebraicRewriteRule
                 }
                 case TOKENIZE: {
                     TokenizeOperator opTokenize = (TokenizeOperator) op;
-                    List<LogicalVariable> primaryKeys = new ArrayList<LogicalVariable>();
-                    List<LogicalVariable> secondaryKeys = new ArrayList<LogicalVariable>();
-                    getKeys(opTokenize.getPrimaryKeyExpressions(), primaryKeys);
-                    getKeys(opTokenize.getSecondaryKeyExpressions(), secondaryKeys);
-                    // Tokenize Operator only operates with a bulk load on a data set with an index
-                    if (opTokenize.isBulkload()) {
-                        op.setPhysicalOperator(new TokenizePOperator(primaryKeys, secondaryKeys, opTokenize
-                                .getDataSourceIndex()));
+                    switch (opTokenize.getOperationMode()) {
+                        case INDEX:
+                            List<LogicalVariable> primaryKeys = new ArrayList<LogicalVariable>();
+                            List<LogicalVariable> secondaryKeys = new ArrayList<LogicalVariable>();
+                            getKeys(opTokenize.getPrimaryKeyExpressions(), primaryKeys);
+                            getKeys(opTokenize.getSecondaryKeyExpressions(), secondaryKeys);
+                            // Tokenize Operator only operates with a bulk load on a data set with an index
+                            if (opTokenize.isBulkload()) {
+                                op.setPhysicalOperator(new TokenizePOperator(primaryKeys, secondaryKeys,
+                                        opTokenize.getDataSourceIndex()));
+                            }
+                            break;
+                        case TOKENIZE:
+                            List<LogicalVariable> fieldsToTokenize = new ArrayList<LogicalVariable>();
+                            getKeys(opTokenize.getPrimaryKeyExpressions(), fieldsToTokenize);
+                            op.setPhysicalOperator(
+                                    new TokenizePOperator(fieldsToTokenize, opTokenize.getTypesOfFieldToTokenize()));
+                        default:
+                            throw new RuntimeException(
+                                    "Unsupported tokenize operaiton mode: " + opTokenize.getOperationMode());
                     }
                     break;
                 }
@@ -415,8 +430,8 @@ public class SetAlgebricksPhysicalOperatorsRule implements IAlgebraicRewriteRule
         int n = aggOp.getExpressions().size();
         List<Mutable<ILogicalExpression>> mergeExpressionRefs = new ArrayList<Mutable<ILogicalExpression>>();
         for (int i = 0; i < n; i++) {
-            ILogicalExpression mergeExpr = mergeAggregationExpressionFactory.createMergeAggregation(
-                    originalAggVars.get(i), aggFuncRefs.get(i).getValue(), context);
+            ILogicalExpression mergeExpr = mergeAggregationExpressionFactory
+                    .createMergeAggregation(originalAggVars.get(i), aggFuncRefs.get(i).getValue(), context);
             if (mergeExpr == null) {
                 return false;
             }

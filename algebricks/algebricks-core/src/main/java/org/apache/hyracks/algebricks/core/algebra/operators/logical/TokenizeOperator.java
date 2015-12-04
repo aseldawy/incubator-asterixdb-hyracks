@@ -19,6 +19,7 @@
 package org.apache.hyracks.algebricks.core.algebra.operators.logical;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
 import org.apache.commons.lang3.mutable.Mutable;
@@ -49,13 +50,22 @@ public class TokenizeOperator extends AbstractLogicalOperator {
     // contains the type for each variable in the tokenizeVars
     private final List<Object> tokenizeVarTypes;
     private List<Mutable<ILogicalExpression>> additionalFilteringExpressions;
+    /** If working in tokenize mode, this field tells the type of the field that will be tokenized */
+    private List<Object> typesOfFieldToTokenize;
 
-    public TokenizeOperator(IDataSourceIndex<?, ?> dataSourceIndex,
-            List<Mutable<ILogicalExpression>> primaryKeyExprs,
-            List<Mutable<ILogicalExpression>> secondaryKeyExprs,
-            List<LogicalVariable> tokenizeVars,
-            Mutable<ILogicalExpression> filterExpr, Kind operation,
-            boolean bulkload, boolean isPartitioned,
+    /** Operation mode for the tokenize operator. */
+    public static enum OperationMode {
+        /** Index mode is used when the tokenizer is used to build the index */
+        INDEX,
+        /** Tokenize mode is used when the tokenizer only creates the token */
+        TOKENIZE
+    };
+
+    private final OperationMode opMode;
+
+    public TokenizeOperator(IDataSourceIndex<?, ?> dataSourceIndex, List<Mutable<ILogicalExpression>> primaryKeyExprs,
+            List<Mutable<ILogicalExpression>> secondaryKeyExprs, List<LogicalVariable> tokenizeVars,
+            Mutable<ILogicalExpression> filterExpr, Kind operation, boolean bulkload, boolean isPartitioned,
             List<Object> tokenizeVarTypes) {
         this.dataSourceIndex = dataSourceIndex;
         this.primaryKeyExprs = primaryKeyExprs;
@@ -66,6 +76,23 @@ public class TokenizeOperator extends AbstractLogicalOperator {
         this.bulkload = bulkload;
         this.isPartitioned = isPartitioned;
         this.tokenizeVarTypes = tokenizeVarTypes;
+        this.opMode = OperationMode.INDEX;
+    }
+
+    public TokenizeOperator(Mutable<ILogicalExpression> fieldToTokenize, LogicalVariable createdTokenVar,
+            Object typeOfFieldToTokenize, Object typeOfTokenVar) {
+        secondaryKeyExprs = null;
+        operation = null;
+        isPartitioned = false;
+        filterExpr = null;
+        dataSourceIndex = null;
+        bulkload = false;
+        this.tokenizeVars = Arrays.asList(createdTokenVar);
+        this.typesOfFieldToTokenize = Arrays.asList(typeOfFieldToTokenize);
+        this.primaryKeyExprs = Arrays.asList(fieldToTokenize);
+        // Type of the token variable that is added
+        this.tokenizeVarTypes = Arrays.asList(typeOfTokenVar);
+        this.opMode = OperationMode.TOKENIZE;
     }
 
     @Override
@@ -76,9 +103,7 @@ public class TokenizeOperator extends AbstractLogicalOperator {
     }
 
     @Override
-    public boolean acceptExpressionTransform(
-            ILogicalExpressionReferenceTransform visitor)
-            throws AlgebricksException {
+    public boolean acceptExpressionTransform(ILogicalExpressionReferenceTransform visitor) throws AlgebricksException {
         boolean b = false;
         for (int i = 0; i < primaryKeyExprs.size(); i++) {
             if (visitor.transform(primaryKeyExprs.get(i))) {
@@ -94,8 +119,7 @@ public class TokenizeOperator extends AbstractLogicalOperator {
     }
 
     @Override
-    public <R, T> R accept(ILogicalOperatorVisitor<R, T> visitor, T arg)
-            throws AlgebricksException {
+    public <R, T> R accept(ILogicalOperatorVisitor<R, T> visitor, T arg) throws AlgebricksException {
         return visitor.visitTokenizeOperator(this, arg);
     }
 
@@ -109,8 +133,8 @@ public class TokenizeOperator extends AbstractLogicalOperator {
         return new VariablePropagationPolicy() {
 
             @Override
-            public void propagateVariables(IOperatorSchema target,
-                    IOperatorSchema... sources) throws AlgebricksException {
+            public void propagateVariables(IOperatorSchema target, IOperatorSchema... sources)
+                    throws AlgebricksException {
                 target.addAllVariables(sources[0]);
                 for (LogicalVariable v : tokenizeVars) {
                     target.addVariable(v);
@@ -126,8 +150,7 @@ public class TokenizeOperator extends AbstractLogicalOperator {
     }
 
     @Override
-    public IVariableTypeEnvironment computeOutputTypeEnvironment(
-            ITypingContext ctx) throws AlgebricksException {
+    public IVariableTypeEnvironment computeOutputTypeEnvironment(ITypingContext ctx) throws AlgebricksException {
         IVariableTypeEnvironment env = createPropagatingAllInputsTypeEnvironment(ctx);
 
         // If the secondary index is not length-partitioned, create one new
@@ -191,4 +214,11 @@ public class TokenizeOperator extends AbstractLogicalOperator {
         return additionalFilteringExpressions;
     }
 
+    public OperationMode getOperationMode() {
+        return opMode;
+    }
+
+    public List<Object> getTypesOfFieldToTokenize() {
+        return typesOfFieldToTokenize;
+    }
 }
