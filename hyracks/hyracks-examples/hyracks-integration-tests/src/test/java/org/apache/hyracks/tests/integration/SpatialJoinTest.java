@@ -55,7 +55,9 @@ import org.apache.hyracks.dataflow.std.file.FileScanOperatorDescriptor;
 import org.apache.hyracks.dataflow.std.file.FileSplit;
 import org.apache.hyracks.dataflow.std.file.IFileSplitProvider;
 import org.apache.hyracks.dataflow.std.result.ResultWriterOperatorDescriptor;
+import org.apache.hyracks.dataflow.std.sjoin.ISpatialPartitioner;
 import org.apache.hyracks.dataflow.std.sjoin.PlaneSweepJoinOperatorDescriptor;
+import org.apache.hyracks.dataflow.std.sjoin.SpatialPartitionOperatorDescriptor;
 import org.apache.hyracks.dataflow.std.sort.ExternalSortOperatorDescriptor;
 import org.apache.hyracks.tests.util.ResultSerializerFactoryProvider;
 import org.junit.Assert;
@@ -598,5 +600,117 @@ public class SpatialJoinTest extends AbstractIntegrationTest {
         spec.addRoot(printer);
         //runTestAndStoreResult(spec, new File("sj_test_output_i"));
         runTestAndCompareResults(spec, new String[] { "data/spatial/result45.txt" });
+    }
+
+    /**
+     * Partitions an input using a uniform grid.
+     * 
+     * @throws Exception
+     */
+    @Test
+    public void shouldWorkWithGridPartitionerTest() throws Exception {
+        JobSpecification spec = new JobSpecification();
+
+        // Define first input file
+        FileSplit[] rect1Splits = new FileSplit[] {
+                new FileSplit(NC1_ID, new FileReference(new File("data/spatial/rects1.sorted.txt"))) };
+        IFileSplitProvider rect1SplitsProvider = new ConstantFileSplitProvider(rect1Splits);
+        RecordDescriptor rect1Desc = new RecordDescriptor(
+                new ISerializerDeserializer[] { IntegerSerializerDeserializer.INSTANCE,
+                        IntegerSerializerDeserializer.INSTANCE, IntegerSerializerDeserializer.INSTANCE,
+                        IntegerSerializerDeserializer.INSTANCE, IntegerSerializerDeserializer.INSTANCE });
+        FileScanOperatorDescriptor rect1Scanner = new FileScanOperatorDescriptor(spec, rect1SplitsProvider,
+                new DelimitedDataTupleParserFactory(new IValueParserFactory[] { IntegerParserFactory.INSTANCE,
+                        IntegerParserFactory.INSTANCE, IntegerParserFactory.INSTANCE, IntegerParserFactory.INSTANCE,
+                        IntegerParserFactory.INSTANCE }, ','),
+                rect1Desc);
+        PartitionConstraintHelper.addAbsoluteLocationConstraint(spec, rect1Scanner, NC1_ID);
+
+        // Define the output file, cellID, recordID, x1, y1, x2, y2
+        RecordDescriptor outputDesc = new RecordDescriptor(new ISerializerDeserializer[] {
+                IntegerSerializerDeserializer.INSTANCE, IntegerSerializerDeserializer.INSTANCE,
+                IntegerSerializerDeserializer.INSTANCE, IntegerSerializerDeserializer.INSTANCE,
+                IntegerSerializerDeserializer.INSTANCE, IntegerSerializerDeserializer.INSTANCE });
+
+        UniformGridPartitionerI gridPartitioner = new UniformGridPartitionerI(0, 0, 80, 80, 2, 2);
+
+        // Project a cell ID column to each record
+        SpatialPartitionOperatorDescriptor partitionOp = new SpatialPartitionOperatorDescriptor(spec, outputDesc,
+                gridPartitioner);
+
+        ResultSetId rsId = new ResultSetId(1);
+        spec.addResultSetId(rsId);
+
+        // Create the sink (output) operator
+        IOperatorDescriptor printer = new ResultWriterOperatorDescriptor(spec, rsId, false, false,
+                ResultSerializerFactoryProvider.INSTANCE.getResultSerializerFactoryProvider());
+
+        PartitionConstraintHelper.addAbsoluteLocationConstraint(spec, printer, NC1_ID);
+
+        // Connect input and output
+        IConnectorDescriptor input1Conn = new OneToOneConnectorDescriptor(spec);
+        spec.connect(input1Conn, rect1Scanner, 0, partitionOp, 0);
+        IConnectorDescriptor outputConn = new OneToOneConnectorDescriptor(spec);
+        spec.connect(outputConn, partitionOp, 0, printer, 0);
+
+        spec.addRoot(printer);
+        //runTestAndStoreResult(spec, new File("sj_test_output_i"));
+        runTestAndCompareResults(spec, new String[] { "data/spatial/rects1.partitioned.txt" });
+    }
+
+    public static class UniformGridPartitionerI implements ISpatialPartitioner, Serializable {
+
+        /** Coordinates of the MBR of the input space domain */
+        private int xmin;
+        private int ymin;
+        private int xmax;
+        private int ymax;
+        /** Number of columns */
+        private int cols;
+        /** Number of rows in the grid */
+        private int rows;
+
+        public UniformGridPartitionerI(int xmin, int ymin, int xmax, int ymax, int cols, int rows) {
+            this.xmin = xmin;
+            this.ymin = ymin;
+            this.xmax = xmax;
+            this.ymax = ymax;
+            this.cols = cols;
+            this.rows = rows;
+        }
+
+        @Override
+        public int getMatchingCells(IFrameTupleAccessor fta, int tupId, int[] matchingCells) {
+            // Read the coordinates of the rectangle
+            ByteBuffer buf = fta.getBuffer();
+            int x1 = buf.getInt(fta.getAbsoluteFieldStartOffset(tupId, 1));
+            int y1 = buf.getInt(fta.getAbsoluteFieldStartOffset(tupId, 2));
+            int x2 = buf.getInt(fta.getAbsoluteFieldStartOffset(tupId, 3));
+            int y2 = buf.getInt(fta.getAbsoluteFieldStartOffset(tupId, 4));
+
+            int col1 = (x1 - xmin) * cols / (xmax - xmin);
+            int col2 = ((x2 - xmin) * cols - 1) / (xmax - xmin) + 1;
+            int row1 = (y1 - ymin) * rows / (ymax - ymin);
+            int row2 = ((y2 - ymin) * rows - 1) / (ymax - ymin) + 1;
+
+            int numMatches = (row2 - row1) * (col2 - col1);
+            int iCell = 0;
+
+            if (numMatches < matchingCells.length) {
+                for (int col = col1; col < col2; col++) {
+                    for (int row = row1; row < row2; row++) {
+                        matchingCells[iCell++] = row * cols + col;
+                    }
+                }
+            }
+            return numMatches;
+        }
+
+        @Override
+        public void getCellBoundary(int cellID, int[] boundaries) {
+            // TODO Auto-generated method stub
+
+        }
+
     }
 }
