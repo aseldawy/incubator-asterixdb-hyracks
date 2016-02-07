@@ -29,6 +29,7 @@ import org.apache.hyracks.api.dataflow.value.IRecordDescriptorProvider;
 import org.apache.hyracks.api.dataflow.value.RecordDescriptor;
 import org.apache.hyracks.api.exceptions.HyracksDataException;
 import org.apache.hyracks.api.job.IOperatorDescriptorRegistry;
+import org.apache.hyracks.dataflow.common.comm.io.ArrayTupleBuilder;
 import org.apache.hyracks.dataflow.common.comm.io.FrameTupleAccessor;
 import org.apache.hyracks.dataflow.common.comm.io.FrameTupleAppender;
 import org.apache.hyracks.dataflow.common.comm.util.FrameUtils;
@@ -88,8 +89,6 @@ public class SpatialPartitionOperatorDescriptor extends AbstractOperatorDescript
             this.ctx = ctx;
 
             return new AbstractUnaryInputUnaryOutputOperatorNodePushable() {
-                /** FrameTupleAccessor to write output records */
-                private FrameTupleAccessor ftaOut;
                 /** FrameTupleAccessor for parsing input records */
                 private FrameTupleAccessor ftaIn;
                 private int[] matchingCells;
@@ -97,17 +96,19 @@ public class SpatialPartitionOperatorDescriptor extends AbstractOperatorDescript
                 private ByteBuffer matchingCellBuffer;
                 /** The appender used to write output records */
                 private FrameTupleAppender appender;
+                /** A builder used to build output records */
+                private ArrayTupleBuilder builder;
 
                 @Override
                 public void open() throws HyracksDataException {
                     this.ftaIn = new FrameTupleAccessor(
                             recordDescProvider.getInputRecordDescriptor(getActivityId(), 0));
-                    this.ftaOut = new FrameTupleAccessor(recordDescriptors[0]);
                     this.writer.open();
                     // Initial capacity for number of matching cells
                     this.matchingCells = new int[16];
                     this.matchingCellBuffer = ByteBuffer.allocate(4);
                     this.appender = new FrameTupleAppender(new VSizeFrame(PartitionActivityNode.this.ctx));
+                    this.builder = new ArrayTupleBuilder(1 + ftaIn.getFieldCount());
                 }
 
                 @Override
@@ -121,19 +122,17 @@ public class SpatialPartitionOperatorDescriptor extends AbstractOperatorDescript
                             matchingCells = new int[size * 2];
                             size = partitionFunction.getMatchingCells(ftaIn, iTuple, matchingCells);
                         }
-                        final int[] cellIDField = { 0 };
                         for (int iCell = 0; iCell < size; iCell++) {
+                            this.builder.reset();
                             this.matchingCellBuffer.putInt(0, matchingCells[iCell]);
-                            if (!appender.appendConcat(cellIDField, matchingCellBuffer.array(), 0, 4, ftaIn, iTuple)) {
-                                // Flush and write next
-                                appender.flush(writer, true);
-                                if (!appender.appendConcat(cellIDField, matchingCellBuffer.array(), 0, 4, ftaIn,
-                                        iTuple)) {
-                                    throw new HyracksDataException("The output cannot be fit into a frame.");
-                                }
-                            }
-                            //FrameUtils.appendToWriter(writer, appender, matchingCellBuffer.array(), 0, 4);
-                            //FrameUtils.appendToWriter(writer, appender, ftaIn, iTuple);
+                            // TODO Is there a better way to add the cell ID field followed by the whole tuple
+                            // without having to create a builder and iterate over fields one by one?
+                            this.builder.addField(matchingCellBuffer.array(), 0, 4);
+                            for (int iField = 0; iField < ftaIn.getFieldCount(); iField++)
+                                this.builder.addField(ftaIn, iTuple, iField);
+
+                            FrameUtils.appendToWriter(writer, appender, builder.getFieldEndOffsets(),
+                                    builder.getByteArray(), 0, builder.getSize());
                         }
                     }
                 }
