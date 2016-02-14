@@ -84,7 +84,7 @@ public class SpatialPartitionOperatorDescriptor extends AbstractOperatorDescript
 
         @Override
         public IOperatorNodePushable createPushRuntime(IHyracksTaskContext ctx,
-                IRecordDescriptorProvider recordDescProvider, int partition, int nPartitions)
+                final IRecordDescriptorProvider recordDescProvider, int partition, int nPartitions)
                         throws HyracksDataException {
             this.ctx = ctx;
 

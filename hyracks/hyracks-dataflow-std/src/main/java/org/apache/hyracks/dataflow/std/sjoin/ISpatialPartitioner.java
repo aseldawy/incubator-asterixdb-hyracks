@@ -44,11 +44,9 @@ public interface ISpatialPartitioner {
      */
     public int getMatchingCells(IFrameTupleAccessor tuples, int index, int[] matchingCells);
 
-    /**
-     * Returns the boundaries of a cell given its ID.
-     * 
-     * @param cellID
-     * @param boundaries
-     */
-    public void getCellBoundary(int cellID, int[] boundaries);
+    /** Find one matching cell for the given point in integer coordinates */
+    public int getMatchingCell(int x, int y);
+
+    /** Find one matching cell for the given point in double coordinates */
+    public int getMatchingCell(double x, double y);
 }

@@ -33,18 +33,25 @@ import org.apache.hyracks.dataflow.common.comm.util.FrameUtils;
 import org.apache.hyracks.dataflow.std.base.AbstractSingleActivityOperatorDescriptor;
 import org.apache.hyracks.dataflow.std.base.AbstractUnaryInputUnaryOutputOperatorNodePushable;
 
-public class ProjectionOperatorDescriptor extends AbstractSingleActivityOperatorDescriptor {
+/**
+ * A filter operator that applies a given predicate to filter out non-matching records.
+ * 
+ * @author Ahmed Eldawy
+ */
+public class FilterOperatorDescriptor extends AbstractSingleActivityOperatorDescriptor {
+    private static final long serialVersionUID = -516636092552514479L;
 
-    private static final long serialVersionUID = 1L;
-    /** Indices of fields in the input to retain in the output */
-    private int[] fieldsToRetain;
+    /** The predicate to apply to input records */
+    private IFilter predicate;
+
+    /** The Hyracks context of the underlying task */
     private IHyracksTaskContext ctx;
 
-    public ProjectionOperatorDescriptor(IOperatorDescriptorRegistry spec, RecordDescriptor rDesc,
-            int[] fieldsToRetain) {
+    public FilterOperatorDescriptor(IOperatorDescriptorRegistry spec, final RecordDescriptor outDesc,
+            IFilter predicate) {
         super(spec, 1, 1);
-        recordDescriptors[0] = rDesc;
-        this.fieldsToRetain = fieldsToRetain;
+        recordDescriptors[0] = outDesc;
+        this.predicate = predicate;
     }
 
     @Override
@@ -52,6 +59,7 @@ public class ProjectionOperatorDescriptor extends AbstractSingleActivityOperator
             final IRecordDescriptorProvider recordDescProvider, int partition, int nPartitions)
                     throws HyracksDataException {
         this.ctx = ctx;
+
         return new AbstractUnaryInputUnaryOutputOperatorNodePushable() {
 
             /** FrameTupleAccessor for input records */
@@ -62,7 +70,7 @@ public class ProjectionOperatorDescriptor extends AbstractSingleActivityOperator
             @Override
             public void open() throws HyracksDataException {
                 this.ftaIn = new FrameTupleAccessor(recordDescProvider.getInputRecordDescriptor(getActivityId(), 0));
-                this.appender = new FrameTupleAppender(new VSizeFrame(ProjectionOperatorDescriptor.this.ctx));
+                this.appender = new FrameTupleAppender(new VSizeFrame(FilterOperatorDescriptor.this.ctx));
                 writer.open();
             }
 
@@ -71,7 +79,8 @@ public class ProjectionOperatorDescriptor extends AbstractSingleActivityOperator
                 ftaIn.reset(buffer);
                 int count = ftaIn.getTupleCount();
                 for (int iTuple = 0; iTuple < count; iTuple++) {
-                    FrameUtils.appendProjectionToWriter(writer, appender, ftaIn, iTuple, fieldsToRetain);
+                    if (predicate.evaluate(ftaIn, iTuple))
+                        FrameUtils.appendToWriter(writer, appender, ftaIn, iTuple);
                 }
             }
 
@@ -86,6 +95,7 @@ public class ProjectionOperatorDescriptor extends AbstractSingleActivityOperator
                 appender.flush(writer, false);
                 writer.close();
             }
+
         };
     }
 
