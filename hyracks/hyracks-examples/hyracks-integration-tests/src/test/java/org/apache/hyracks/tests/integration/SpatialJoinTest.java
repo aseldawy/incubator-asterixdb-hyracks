@@ -1051,7 +1051,7 @@ public class SpatialJoinTest extends AbstractIntegrationTest {
     }
 
     /**
-     * A grid partitioner for records represented as five integers in the format:
+     * A grid partitioner for records represented as five doubles in the format:
      * id, x1, y1, x2, y2
      * 
      * @author Ahmed Eldawy
