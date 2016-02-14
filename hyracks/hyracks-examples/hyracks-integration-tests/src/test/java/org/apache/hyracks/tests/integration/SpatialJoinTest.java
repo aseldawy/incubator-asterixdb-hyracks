@@ -33,6 +33,7 @@ import org.apache.hyracks.api.constraints.PartitionConstraintHelper;
 import org.apache.hyracks.api.dataflow.IConnectorDescriptor;
 import org.apache.hyracks.api.dataflow.IOperatorDescriptor;
 import org.apache.hyracks.api.dataflow.value.IBinaryComparatorFactory;
+import org.apache.hyracks.api.dataflow.value.IBinaryHashFunctionFactory;
 import org.apache.hyracks.api.dataflow.value.IPredicateEvaluator;
 import org.apache.hyracks.api.dataflow.value.ISerializerDeserializer;
 import org.apache.hyracks.api.dataflow.value.ITuplePairComparator;
@@ -42,12 +43,16 @@ import org.apache.hyracks.api.exceptions.HyracksDataException;
 import org.apache.hyracks.api.io.FileReference;
 import org.apache.hyracks.api.job.JobSpecification;
 import org.apache.hyracks.data.std.accessors.PointableBinaryComparatorFactory;
+import org.apache.hyracks.data.std.accessors.PointableBinaryHashFunctionFactory;
 import org.apache.hyracks.data.std.primitive.IntegerPointable;
+import org.apache.hyracks.data.std.primitive.UTF8StringPointable;
 import org.apache.hyracks.dataflow.common.data.marshalling.DoubleSerializerDeserializer;
 import org.apache.hyracks.dataflow.common.data.marshalling.IntegerSerializerDeserializer;
 import org.apache.hyracks.dataflow.common.data.parsers.DoubleParserFactory;
 import org.apache.hyracks.dataflow.common.data.parsers.IValueParserFactory;
 import org.apache.hyracks.dataflow.common.data.parsers.IntegerParserFactory;
+import org.apache.hyracks.dataflow.common.data.partition.FieldHashPartitionComputerFactory;
+import org.apache.hyracks.dataflow.std.connectors.MToNPartitioningConnectorDescriptor;
 import org.apache.hyracks.dataflow.std.connectors.OneToOneConnectorDescriptor;
 import org.apache.hyracks.dataflow.std.file.ConstantFileSplitProvider;
 import org.apache.hyracks.dataflow.std.file.DelimitedDataTupleParserFactory;
@@ -684,6 +689,133 @@ public class SpatialJoinTest extends AbstractIntegrationTest {
 
         spec.connect(new OneToOneConnectorDescriptor(spec), sorter1, 0, join, 0);
         spec.connect(new OneToOneConnectorDescriptor(spec), sorter2, 0, join, 1);
+
+        spec.connect(new OneToOneConnectorDescriptor(spec), join, 0, dupAvoidanceOp, 0);
+        spec.connect(new OneToOneConnectorDescriptor(spec), dupAvoidanceOp, 0, projectOp, 0);
+
+        spec.connect(new OneToOneConnectorDescriptor(spec), projectOp, 0, printer, 0);
+
+        spec.addRoot(printer);
+        runTestAndStoreResult(spec, new File("sj_test_output_i"));
+        runTestAndCompareResults(spec, new String[] { "data/spatial/result12.txt" });
+    }
+
+    @Test
+    public void shouldRunPBSMInDistributedModeTest() throws Exception {
+
+        JobSpecification spec = new JobSpecification();
+        // Define first input file
+        FileSplit[] rect1Splits = new FileSplit[] {
+                new FileSplit(NC1_ID, new FileReference(new File("data/spatial/rects1.sorted.txt"))) };
+        IFileSplitProvider rect1SplitsProvider = new ConstantFileSplitProvider(rect1Splits);
+        RecordDescriptor rect1Desc = new RecordDescriptor(
+                new ISerializerDeserializer[] { IntegerSerializerDeserializer.INSTANCE,
+                        IntegerSerializerDeserializer.INSTANCE, IntegerSerializerDeserializer.INSTANCE,
+                        IntegerSerializerDeserializer.INSTANCE, IntegerSerializerDeserializer.INSTANCE });
+        FileScanOperatorDescriptor rect1Scanner = new FileScanOperatorDescriptor(spec, rect1SplitsProvider,
+                new DelimitedDataTupleParserFactory(new IValueParserFactory[] { IntegerParserFactory.INSTANCE,
+                        IntegerParserFactory.INSTANCE, IntegerParserFactory.INSTANCE, IntegerParserFactory.INSTANCE,
+                        IntegerParserFactory.INSTANCE }, ','),
+                rect1Desc);
+        PartitionConstraintHelper.addAbsoluteLocationConstraint(spec, rect1Scanner, NC1_ID);
+
+        // Define second input file
+        FileSplit[] rect2Splits = new FileSplit[] {
+                new FileSplit(NC1_ID, new FileReference(new File("data/spatial/rects2.sorted.txt"))) };
+        IFileSplitProvider rect2SplitsProvider = new ConstantFileSplitProvider(rect2Splits);
+        RecordDescriptor rect2Desc = new RecordDescriptor(
+                new ISerializerDeserializer[] { IntegerSerializerDeserializer.INSTANCE,
+                        IntegerSerializerDeserializer.INSTANCE, IntegerSerializerDeserializer.INSTANCE,
+                        IntegerSerializerDeserializer.INSTANCE, IntegerSerializerDeserializer.INSTANCE });
+        FileScanOperatorDescriptor rect2Scanner = new FileScanOperatorDescriptor(spec, rect2SplitsProvider,
+                new DelimitedDataTupleParserFactory(new IValueParserFactory[] { IntegerParserFactory.INSTANCE,
+                        IntegerParserFactory.INSTANCE, IntegerParserFactory.INSTANCE, IntegerParserFactory.INSTANCE,
+                        IntegerParserFactory.INSTANCE }, ','),
+                rect2Desc);
+        PartitionConstraintHelper.addAbsoluteLocationConstraint(spec, rect2Scanner, NC1_ID);
+
+        // Define the format of partitioned data: cellID, recordID, x1, y1, x2, y2
+        RecordDescriptor partitioned1Desc = new RecordDescriptor(new ISerializerDeserializer[] {
+                IntegerSerializerDeserializer.INSTANCE, IntegerSerializerDeserializer.INSTANCE,
+                IntegerSerializerDeserializer.INSTANCE, IntegerSerializerDeserializer.INSTANCE,
+                IntegerSerializerDeserializer.INSTANCE, IntegerSerializerDeserializer.INSTANCE });
+        RecordDescriptor partitioned2Desc = new RecordDescriptor(new ISerializerDeserializer[] {
+                IntegerSerializerDeserializer.INSTANCE, IntegerSerializerDeserializer.INSTANCE,
+                IntegerSerializerDeserializer.INSTANCE, IntegerSerializerDeserializer.INSTANCE,
+                IntegerSerializerDeserializer.INSTANCE, IntegerSerializerDeserializer.INSTANCE });
+
+        // Define the output file: rCID, rID, rx1, ry1, rx2, ry2, sCID, sID, sx1, sy1, sx2, sy2
+        RecordDescriptor joinedDesc = new RecordDescriptor(new ISerializerDeserializer[] {
+                IntegerSerializerDeserializer.INSTANCE, IntegerSerializerDeserializer.INSTANCE,
+                IntegerSerializerDeserializer.INSTANCE, IntegerSerializerDeserializer.INSTANCE,
+                IntegerSerializerDeserializer.INSTANCE, IntegerSerializerDeserializer.INSTANCE,
+                IntegerSerializerDeserializer.INSTANCE, IntegerSerializerDeserializer.INSTANCE,
+                IntegerSerializerDeserializer.INSTANCE, IntegerSerializerDeserializer.INSTANCE,
+                IntegerSerializerDeserializer.INSTANCE, IntegerSerializerDeserializer.INSTANCE });
+        // Final output (remove cell IDs)t: rID, rx1, ry1, rx2, ry2, sID, sx1, sy1, sx2, sy2
+        RecordDescriptor outputDesc = new RecordDescriptor(new ISerializerDeserializer[] {
+                IntegerSerializerDeserializer.INSTANCE, IntegerSerializerDeserializer.INSTANCE,
+                IntegerSerializerDeserializer.INSTANCE, IntegerSerializerDeserializer.INSTANCE,
+                IntegerSerializerDeserializer.INSTANCE, IntegerSerializerDeserializer.INSTANCE,
+                IntegerSerializerDeserializer.INSTANCE, IntegerSerializerDeserializer.INSTANCE,
+                IntegerSerializerDeserializer.INSTANCE, IntegerSerializerDeserializer.INSTANCE });
+
+        UniformGridPartitionerI gridPartitioner1 = new UniformGridPartitionerI(0, 0, 80, 80, 4, 4);
+        UniformGridPartitionerI gridPartitioner2 = new UniformGridPartitionerI(0, 0, 80, 80, 4, 4);
+
+        // Project a cell ID column to each record
+        SpatialPartitionOperatorDescriptor partitionOp1 = new SpatialPartitionOperatorDescriptor(spec, partitioned1Desc,
+                gridPartitioner1);
+        SpatialPartitionOperatorDescriptor partitionOp2 = new SpatialPartitionOperatorDescriptor(spec, partitioned2Desc,
+                gridPartitioner2);
+
+        // Sort the two inputs based on (cellID, X1)
+        ExternalSortOperatorDescriptor sorter1 = new ExternalSortOperatorDescriptor(spec, 10, new int[] { 0, 2 },
+                new IBinaryComparatorFactory[] { PointableBinaryComparatorFactory.of(IntegerPointable.FACTORY),
+                        PointableBinaryComparatorFactory.of(IntegerPointable.FACTORY) },
+                partitioned1Desc);
+        ExternalSortOperatorDescriptor sorter2 = new ExternalSortOperatorDescriptor(spec, 10, new int[] { 0, 2 },
+                new IBinaryComparatorFactory[] { PointableBinaryComparatorFactory.of(IntegerPointable.FACTORY),
+                        PointableBinaryComparatorFactory.of(IntegerPointable.FACTORY) },
+                partitioned2Desc);
+
+        // Plane-sweep join operator
+        PlaneSweepJoinOperatorDescriptor join = new PlaneSweepJoinOperatorDescriptor(spec, new CellIDX1X1ComparatorI(),
+                new CellIDX1X2ComparatorI(), new CellIDX1X2ComparatorI(), joinedDesc, 10,
+                new SpatialOverlapCellPredicateI());
+        PartitionConstraintHelper.addAbsoluteLocationConstraint(spec, join, NC1_ID);
+
+        FilterOperatorDescriptor dupAvoidanceOp = new FilterOperatorDescriptor(spec, joinedDesc,
+                new ReferencePointI(gridPartitioner1));
+
+        ProjectionOperatorDescriptor projectOp = new ProjectionOperatorDescriptor(spec, outputDesc,
+                new int[] { 1, 2, 3, 4, 5, 7, 8, 9, 10, 11 });
+
+        ResultSetId rsId = new ResultSetId(1);
+        spec.addResultSetId(rsId);
+
+        // Create the sink (output) operator
+        IOperatorDescriptor printer = new ResultWriterOperatorDescriptor(spec, rsId, false, false,
+                ResultSerializerFactoryProvider.INSTANCE.getResultSerializerFactoryProvider());
+
+        PartitionConstraintHelper.addAbsoluteLocationConstraint(spec, printer, NC1_ID);
+
+        // Connect input and output
+        spec.connect(new OneToOneConnectorDescriptor(spec), rect1Scanner, 0, partitionOp1, 0);
+        spec.connect(new OneToOneConnectorDescriptor(spec), rect2Scanner, 0, partitionOp2, 0);
+
+        spec.connect(new OneToOneConnectorDescriptor(spec), partitionOp1, 0, sorter1, 0);
+        spec.connect(new OneToOneConnectorDescriptor(spec), partitionOp2, 0, sorter2, 0);
+
+        IConnectorDescriptor rJoinConn = new MToNPartitioningConnectorDescriptor(spec,
+                new FieldHashPartitionComputerFactory(new int[] { 0 }, new IBinaryHashFunctionFactory[] {
+                        PointableBinaryHashFunctionFactory.of(IntegerPointable.FACTORY) }));
+        spec.connect(rJoinConn, sorter1, 0, join, 0);
+
+        IConnectorDescriptor sJoinConn = new MToNPartitioningConnectorDescriptor(spec,
+                new FieldHashPartitionComputerFactory(new int[] { 0 }, new IBinaryHashFunctionFactory[] {
+                        PointableBinaryHashFunctionFactory.of(IntegerPointable.FACTORY) }));
+        spec.connect(sJoinConn, sorter2, 0, join, 1);
 
         spec.connect(new OneToOneConnectorDescriptor(spec), join, 0, dupAvoidanceOp, 0);
         spec.connect(new OneToOneConnectorDescriptor(spec), dupAvoidanceOp, 0, projectOp, 0);
