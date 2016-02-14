@@ -44,8 +44,8 @@ import org.apache.hyracks.api.io.FileReference;
 import org.apache.hyracks.api.job.JobSpecification;
 import org.apache.hyracks.data.std.accessors.PointableBinaryComparatorFactory;
 import org.apache.hyracks.data.std.accessors.PointableBinaryHashFunctionFactory;
+import org.apache.hyracks.data.std.primitive.DoublePointable;
 import org.apache.hyracks.data.std.primitive.IntegerPointable;
-import org.apache.hyracks.data.std.primitive.UTF8StringPointable;
 import org.apache.hyracks.dataflow.common.data.marshalling.DoubleSerializerDeserializer;
 import org.apache.hyracks.dataflow.common.data.marshalling.IntegerSerializerDeserializer;
 import org.apache.hyracks.dataflow.common.data.parsers.DoubleParserFactory;
@@ -706,87 +706,78 @@ public class SpatialJoinTest extends AbstractIntegrationTest {
         JobSpecification spec = new JobSpecification();
         // Define first input file
         FileSplit[] rect1Splits = new FileSplit[] {
-                new FileSplit(NC1_ID, new FileReference(new File("data/spatial/rects1.sorted.txt"))) };
+                new FileSplit(NC1_ID, new FileReference(new File("data/spatial/rects4.txt"))) };
         IFileSplitProvider rect1SplitsProvider = new ConstantFileSplitProvider(rect1Splits);
-        RecordDescriptor rect1Desc = new RecordDescriptor(
+        RecordDescriptor inDesc = new RecordDescriptor(
                 new ISerializerDeserializer[] { IntegerSerializerDeserializer.INSTANCE,
-                        IntegerSerializerDeserializer.INSTANCE, IntegerSerializerDeserializer.INSTANCE,
-                        IntegerSerializerDeserializer.INSTANCE, IntegerSerializerDeserializer.INSTANCE });
+                        DoubleSerializerDeserializer.INSTANCE, DoubleSerializerDeserializer.INSTANCE,
+                        DoubleSerializerDeserializer.INSTANCE, DoubleSerializerDeserializer.INSTANCE });
         FileScanOperatorDescriptor rect1Scanner = new FileScanOperatorDescriptor(spec, rect1SplitsProvider,
                 new DelimitedDataTupleParserFactory(new IValueParserFactory[] { IntegerParserFactory.INSTANCE,
-                        IntegerParserFactory.INSTANCE, IntegerParserFactory.INSTANCE, IntegerParserFactory.INSTANCE,
-                        IntegerParserFactory.INSTANCE }, ','),
-                rect1Desc);
+                        DoubleParserFactory.INSTANCE, DoubleParserFactory.INSTANCE, DoubleParserFactory.INSTANCE,
+                        DoubleParserFactory.INSTANCE }, ','),
+                inDesc);
         PartitionConstraintHelper.addAbsoluteLocationConstraint(spec, rect1Scanner, NC1_ID);
 
         // Define second input file
         FileSplit[] rect2Splits = new FileSplit[] {
-                new FileSplit(NC1_ID, new FileReference(new File("data/spatial/rects2.sorted.txt"))) };
+                new FileSplit(NC1_ID, new FileReference(new File("data/spatial/rects5.txt"))) };
         IFileSplitProvider rect2SplitsProvider = new ConstantFileSplitProvider(rect2Splits);
-        RecordDescriptor rect2Desc = new RecordDescriptor(
-                new ISerializerDeserializer[] { IntegerSerializerDeserializer.INSTANCE,
-                        IntegerSerializerDeserializer.INSTANCE, IntegerSerializerDeserializer.INSTANCE,
-                        IntegerSerializerDeserializer.INSTANCE, IntegerSerializerDeserializer.INSTANCE });
         FileScanOperatorDescriptor rect2Scanner = new FileScanOperatorDescriptor(spec, rect2SplitsProvider,
                 new DelimitedDataTupleParserFactory(new IValueParserFactory[] { IntegerParserFactory.INSTANCE,
-                        IntegerParserFactory.INSTANCE, IntegerParserFactory.INSTANCE, IntegerParserFactory.INSTANCE,
-                        IntegerParserFactory.INSTANCE }, ','),
-                rect2Desc);
+                        DoubleParserFactory.INSTANCE, DoubleParserFactory.INSTANCE, DoubleParserFactory.INSTANCE,
+                        DoubleParserFactory.INSTANCE }, ','),
+                inDesc);
         PartitionConstraintHelper.addAbsoluteLocationConstraint(spec, rect2Scanner, NC1_ID);
 
         // Define the format of partitioned data: cellID, recordID, x1, y1, x2, y2
-        RecordDescriptor partitioned1Desc = new RecordDescriptor(new ISerializerDeserializer[] {
+        RecordDescriptor partitionedDesc = new RecordDescriptor(new ISerializerDeserializer[] {
                 IntegerSerializerDeserializer.INSTANCE, IntegerSerializerDeserializer.INSTANCE,
-                IntegerSerializerDeserializer.INSTANCE, IntegerSerializerDeserializer.INSTANCE,
-                IntegerSerializerDeserializer.INSTANCE, IntegerSerializerDeserializer.INSTANCE });
-        RecordDescriptor partitioned2Desc = new RecordDescriptor(new ISerializerDeserializer[] {
-                IntegerSerializerDeserializer.INSTANCE, IntegerSerializerDeserializer.INSTANCE,
-                IntegerSerializerDeserializer.INSTANCE, IntegerSerializerDeserializer.INSTANCE,
-                IntegerSerializerDeserializer.INSTANCE, IntegerSerializerDeserializer.INSTANCE });
+                DoubleSerializerDeserializer.INSTANCE, DoubleSerializerDeserializer.INSTANCE,
+                DoubleSerializerDeserializer.INSTANCE, DoubleSerializerDeserializer.INSTANCE });
 
         // Define the output file: rCID, rID, rx1, ry1, rx2, ry2, sCID, sID, sx1, sy1, sx2, sy2
         RecordDescriptor joinedDesc = new RecordDescriptor(new ISerializerDeserializer[] {
                 IntegerSerializerDeserializer.INSTANCE, IntegerSerializerDeserializer.INSTANCE,
+                DoubleSerializerDeserializer.INSTANCE, DoubleSerializerDeserializer.INSTANCE,
+                DoubleSerializerDeserializer.INSTANCE, DoubleSerializerDeserializer.INSTANCE,
                 IntegerSerializerDeserializer.INSTANCE, IntegerSerializerDeserializer.INSTANCE,
-                IntegerSerializerDeserializer.INSTANCE, IntegerSerializerDeserializer.INSTANCE,
-                IntegerSerializerDeserializer.INSTANCE, IntegerSerializerDeserializer.INSTANCE,
-                IntegerSerializerDeserializer.INSTANCE, IntegerSerializerDeserializer.INSTANCE,
-                IntegerSerializerDeserializer.INSTANCE, IntegerSerializerDeserializer.INSTANCE });
+                DoubleSerializerDeserializer.INSTANCE, DoubleSerializerDeserializer.INSTANCE,
+                DoubleSerializerDeserializer.INSTANCE, DoubleSerializerDeserializer.INSTANCE });
         // Final output (remove cell IDs)t: rID, rx1, ry1, rx2, ry2, sID, sx1, sy1, sx2, sy2
         RecordDescriptor outputDesc = new RecordDescriptor(new ISerializerDeserializer[] {
-                IntegerSerializerDeserializer.INSTANCE, IntegerSerializerDeserializer.INSTANCE,
-                IntegerSerializerDeserializer.INSTANCE, IntegerSerializerDeserializer.INSTANCE,
-                IntegerSerializerDeserializer.INSTANCE, IntegerSerializerDeserializer.INSTANCE,
-                IntegerSerializerDeserializer.INSTANCE, IntegerSerializerDeserializer.INSTANCE,
-                IntegerSerializerDeserializer.INSTANCE, IntegerSerializerDeserializer.INSTANCE });
+                IntegerSerializerDeserializer.INSTANCE, DoubleSerializerDeserializer.INSTANCE,
+                DoubleSerializerDeserializer.INSTANCE, DoubleSerializerDeserializer.INSTANCE,
+                DoubleSerializerDeserializer.INSTANCE, IntegerSerializerDeserializer.INSTANCE,
+                DoubleSerializerDeserializer.INSTANCE, DoubleSerializerDeserializer.INSTANCE,
+                DoubleSerializerDeserializer.INSTANCE, DoubleSerializerDeserializer.INSTANCE });
 
-        UniformGridPartitionerI gridPartitioner1 = new UniformGridPartitionerI(0, 0, 80, 80, 4, 4);
-        UniformGridPartitionerI gridPartitioner2 = new UniformGridPartitionerI(0, 0, 80, 80, 4, 4);
+        UniformGridPartitionerD gridPartitioner = new UniformGridPartitionerD(0, 0, 10000, 10000, 100, 100);
 
         // Project a cell ID column to each record
-        SpatialPartitionOperatorDescriptor partitionOp1 = new SpatialPartitionOperatorDescriptor(spec, partitioned1Desc,
-                gridPartitioner1);
-        SpatialPartitionOperatorDescriptor partitionOp2 = new SpatialPartitionOperatorDescriptor(spec, partitioned2Desc,
-                gridPartitioner2);
+        SpatialPartitionOperatorDescriptor partitionOp1 = new SpatialPartitionOperatorDescriptor(spec, partitionedDesc,
+                gridPartitioner);
+        SpatialPartitionOperatorDescriptor partitionOp2 = new SpatialPartitionOperatorDescriptor(spec, partitionedDesc,
+                gridPartitioner);
 
         // Sort the two inputs based on (cellID, X1)
         ExternalSortOperatorDescriptor sorter1 = new ExternalSortOperatorDescriptor(spec, 10, new int[] { 0, 2 },
                 new IBinaryComparatorFactory[] { PointableBinaryComparatorFactory.of(IntegerPointable.FACTORY),
-                        PointableBinaryComparatorFactory.of(IntegerPointable.FACTORY) },
-                partitioned1Desc);
+                        PointableBinaryComparatorFactory.of(DoublePointable.FACTORY) },
+                partitionedDesc);
         ExternalSortOperatorDescriptor sorter2 = new ExternalSortOperatorDescriptor(spec, 10, new int[] { 0, 2 },
                 new IBinaryComparatorFactory[] { PointableBinaryComparatorFactory.of(IntegerPointable.FACTORY),
-                        PointableBinaryComparatorFactory.of(IntegerPointable.FACTORY) },
-                partitioned2Desc);
+                        PointableBinaryComparatorFactory.of(DoublePointable.FACTORY) },
+                partitionedDesc);
 
         // Plane-sweep join operator
-        PlaneSweepJoinOperatorDescriptor join = new PlaneSweepJoinOperatorDescriptor(spec, new CellIDX1X1ComparatorI(),
-                new CellIDX1X2ComparatorI(), new CellIDX1X2ComparatorI(), joinedDesc, 10,
-                new SpatialOverlapCellPredicateI());
+        PlaneSweepJoinOperatorDescriptor join = new PlaneSweepJoinOperatorDescriptor(spec, new CellIDX1X1ComparatorD(),
+                new CellIDX1X2ComparatorD(), new CellIDX1X2ComparatorD(), joinedDesc, 10,
+                new SpatialOverlapCellPredicateD());
         PartitionConstraintHelper.addAbsoluteLocationConstraint(spec, join, NC1_ID);
 
         FilterOperatorDescriptor dupAvoidanceOp = new FilterOperatorDescriptor(spec, joinedDesc,
-                new ReferencePointI(gridPartitioner1));
+                new ReferencePointD(gridPartitioner));
 
         ProjectionOperatorDescriptor projectOp = new ProjectionOperatorDescriptor(spec, outputDesc,
                 new int[] { 1, 2, 3, 4, 5, 7, 8, 9, 10, 11 });
@@ -807,15 +798,17 @@ public class SpatialJoinTest extends AbstractIntegrationTest {
         spec.connect(new OneToOneConnectorDescriptor(spec), partitionOp1, 0, sorter1, 0);
         spec.connect(new OneToOneConnectorDescriptor(spec), partitionOp2, 0, sorter2, 0);
 
-        IConnectorDescriptor rJoinConn = new MToNPartitioningConnectorDescriptor(spec,
+        ////////////////////////////
+        IConnectorDescriptor repartitioner1 = new MToNPartitioningConnectorDescriptor(spec,
                 new FieldHashPartitionComputerFactory(new int[] { 0 }, new IBinaryHashFunctionFactory[] {
                         PointableBinaryHashFunctionFactory.of(IntegerPointable.FACTORY) }));
-        spec.connect(rJoinConn, sorter1, 0, join, 0);
+        IConnectorDescriptor repartitioner2 = new MToNPartitioningConnectorDescriptor(spec,
+                new FieldHashPartitionComputerFactory(new int[] { 0 }, new IBinaryHashFunctionFactory[] {
+                        PointableBinaryHashFunctionFactory.of(IntegerPointable.FACTORY) }));
+        ////////////////////////////////
 
-        IConnectorDescriptor sJoinConn = new MToNPartitioningConnectorDescriptor(spec,
-                new FieldHashPartitionComputerFactory(new int[] { 0 }, new IBinaryHashFunctionFactory[] {
-                        PointableBinaryHashFunctionFactory.of(IntegerPointable.FACTORY) }));
-        spec.connect(sJoinConn, sorter2, 0, join, 1);
+        spec.connect(repartitioner1, sorter1, 0, join, 0);
+        spec.connect(repartitioner2, sorter2, 0, join, 1);
 
         spec.connect(new OneToOneConnectorDescriptor(spec), join, 0, dupAvoidanceOp, 0);
         spec.connect(new OneToOneConnectorDescriptor(spec), dupAvoidanceOp, 0, projectOp, 0);
@@ -823,8 +816,11 @@ public class SpatialJoinTest extends AbstractIntegrationTest {
         spec.connect(new OneToOneConnectorDescriptor(spec), projectOp, 0, printer, 0);
 
         spec.addRoot(printer);
+        long t1 = System.currentTimeMillis();
         runTestAndStoreResult(spec, new File("sj_test_output_i"));
-        runTestAndCompareResults(spec, new String[] { "data/spatial/result12.txt" });
+        long t2 = System.currentTimeMillis();
+        System.out.printf("Finished spatial join in %f seconds\n", (t2 - t1) / 1000.0);
+        runTestAndCompareResults(spec, new String[] { "data/spatial/result45.txt" });
     }
 
     /**
@@ -869,6 +865,7 @@ public class SpatialJoinTest extends AbstractIntegrationTest {
                 throws HyracksDataException {
             // Read the coordinates of the first rectangle
             ByteBuffer buf = fta0.getBuffer();
+
             double r0_x1 = buf.getDouble(fta0.getAbsoluteFieldStartOffset(tupId0, 1));
             // Read the coordinates of the second rectangle
             buf = fta1.getBuffer();
@@ -1014,15 +1011,6 @@ public class SpatialJoinTest extends AbstractIntegrationTest {
             // Read the coordinates of the rectangle
             ByteBuffer buf = fta.getBuffer();
 
-            System.out.printf("Grid Partitioner tuple 0 (%d): ", fta.getFieldCount());
-            for (int i = 0; i < fta.getFieldCount(); i++) {
-                System.out.printf("[%d],", fta.getFieldLength(tupId, i));
-            }
-            for (int i = 0; i < fta.getFieldCount(); i++) {
-                System.out.printf("%d,", buf.getInt(fta.getAbsoluteFieldStartOffset(tupId, i)));
-            }
-            System.out.println();
-
             int x1 = buf.getInt(fta.getAbsoluteFieldStartOffset(tupId, 1));
             int y1 = buf.getInt(fta.getAbsoluteFieldStartOffset(tupId, 2));
             int x2 = buf.getInt(fta.getAbsoluteFieldStartOffset(tupId, 3));
@@ -1062,6 +1050,76 @@ public class SpatialJoinTest extends AbstractIntegrationTest {
 
     }
 
+    /**
+     * A grid partitioner for records represented as five integers in the format:
+     * id, x1, y1, x2, y2
+     * 
+     * @author Ahmed Eldawy
+     */
+    public static class UniformGridPartitionerD implements ISpatialPartitioner, Serializable {
+
+        private static final long serialVersionUID = 1L;
+        /** Coordinates of the MBR of the input space domain */
+        private double xmin;
+        private double ymin;
+        private double xmax;
+        private double ymax;
+        /** Number of columns */
+        private int cols;
+        /** Number of rows in the grid */
+        private int rows;
+
+        public UniformGridPartitionerD(double xmin, double ymin, double xmax, double ymax, int cols, int rows) {
+            this.xmin = xmin;
+            this.ymin = ymin;
+            this.xmax = xmax;
+            this.ymax = ymax;
+            this.cols = cols;
+            this.rows = rows;
+        }
+
+        @Override
+        public int getMatchingCells(IFrameTupleAccessor fta, int tupId, int[] matchingCells) {
+            // Read the coordinates of the rectangle
+            ByteBuffer buf = fta.getBuffer();
+
+            double x1 = buf.getDouble(fta.getAbsoluteFieldStartOffset(tupId, 1));
+            double y1 = buf.getDouble(fta.getAbsoluteFieldStartOffset(tupId, 2));
+            double x2 = buf.getDouble(fta.getAbsoluteFieldStartOffset(tupId, 3));
+            double y2 = buf.getDouble(fta.getAbsoluteFieldStartOffset(tupId, 4));
+
+            int col1 = (int) Math.floor((x1 - xmin) * cols / (xmax - xmin));
+            int col2 = (int) Math.ceil(((x2 - xmin) * cols) / (xmax - xmin));
+            int row1 = (int) Math.floor((y1 - ymin) * rows / (ymax - ymin));
+            int row2 = (int) Math.ceil(((y2 - ymin) * rows) / (ymax - ymin));
+
+            int numMatches = (row2 - row1) * (col2 - col1);
+            int iCell = 0;
+
+            if (numMatches < matchingCells.length) {
+                for (int col = col1; col < col2; col++) {
+                    for (int row = row1; row < row2; row++) {
+                        matchingCells[iCell++] = row * cols + col;
+                    }
+                }
+            }
+            return numMatches;
+        }
+
+        @Override
+        public int getMatchingCell(int x, int y) {
+            return getMatchingCell((double) x, (double) y);
+        }
+
+        @Override
+        public int getMatchingCell(double x, double y) {
+            int col = (int) Math.floor((x - xmin) * cols / (xmax - xmin));
+            int row = (int) Math.floor((y - ymin) * rows / (ymax - ymin));
+            return row * cols + col;
+        }
+
+    }
+
     public static class CellIDX1X1ComparatorI implements ITuplePairComparator, Serializable {
 
         private static final long serialVersionUID = -5880035679836791236L;
@@ -1072,16 +1130,6 @@ public class SpatialJoinTest extends AbstractIntegrationTest {
             // Compare the cell IDs
             ByteBuffer buf0 = fta0.getBuffer();
             ByteBuffer buf1 = fta1.getBuffer();
-
-            System.out.print("Comparing X1 X1: (");
-            for (int i = 0; i < fta0.getFieldCount(); i++) {
-                System.out.printf("%d,", buf0.getInt(fta0.getAbsoluteFieldStartOffset(tupId0, i)));
-            }
-            System.out.print(") to (");
-            for (int i = 0; i < fta1.getFieldCount(); i++) {
-                System.out.printf("%d,", buf1.getInt(fta1.getAbsoluteFieldStartOffset(tupId1, i)));
-            }
-            System.out.println(")");
 
             int r0_cellId = buf0.getInt(fta0.getAbsoluteFieldStartOffset(tupId0, 0));
             int r1_cellId = buf1.getInt(fta1.getAbsoluteFieldStartOffset(tupId1, 0));
@@ -1116,6 +1164,53 @@ public class SpatialJoinTest extends AbstractIntegrationTest {
         }
     }
 
+    public static class CellIDX1X1ComparatorD implements ITuplePairComparator, Serializable {
+
+        private static final long serialVersionUID = -5880035679836791236L;
+
+        @Override
+        public int compare(IFrameTupleAccessor fta0, int tupId0, IFrameTupleAccessor fta1, int tupId1)
+                throws HyracksDataException {
+            // Compare the cell IDs
+            ByteBuffer buf0 = fta0.getBuffer();
+            ByteBuffer buf1 = fta1.getBuffer();
+
+            int r0_cellId = buf0.getInt(fta0.getAbsoluteFieldStartOffset(tupId0, 0));
+            int r1_cellId = buf1.getInt(fta1.getAbsoluteFieldStartOffset(tupId1, 0));
+            if (r0_cellId != r1_cellId)
+                return r0_cellId - r1_cellId;
+
+            // Compare the x1 coordinates
+            double r0_x1 = buf0.getDouble(fta0.getAbsoluteFieldStartOffset(tupId0, 1));
+            double r1_x1 = buf1.getDouble(fta1.getAbsoluteFieldStartOffset(tupId1, 1));
+
+            return r0_x1 < r1_x1 ? -1 : (r0_x1 > r1_x1 ? 1 : 0);
+        }
+    }
+
+    public static class CellIDX1X2ComparatorD implements ITuplePairComparator, Serializable {
+        private static final long serialVersionUID = -5880035679836791236L;
+
+        @Override
+        public int compare(IFrameTupleAccessor fta0, int tupId0, IFrameTupleAccessor fta1, int tupId1)
+                throws HyracksDataException {
+            // Compare the cell IDs
+            ByteBuffer buf0 = fta0.getBuffer();
+            ByteBuffer buf1 = fta1.getBuffer();
+
+            int r0_cellId = buf0.getInt(fta0.getAbsoluteFieldStartOffset(tupId0, 0));
+            int r1_cellId = buf1.getInt(fta1.getAbsoluteFieldStartOffset(tupId1, 0));
+
+            if (r0_cellId != r1_cellId)
+                return r0_cellId - r1_cellId;
+
+            // Compare the x1 coordinates
+            double r0_x1 = buf0.getDouble(fta0.getAbsoluteFieldStartOffset(tupId0, 2));
+            double r1_x2 = buf1.getDouble(fta1.getAbsoluteFieldStartOffset(tupId1, 4));
+            return r0_x1 < r1_x2 ? -1 : (r0_x1 > r1_x2 ? 1 : 0);
+        }
+    }
+
     public static class SpatialOverlapCellPredicateI implements IPredicateEvaluator, Serializable {
 
         private static final long serialVersionUID = 5418297063092065477L;
@@ -1143,6 +1238,48 @@ public class SpatialJoinTest extends AbstractIntegrationTest {
 
             // Evaluate the overlap of the two rectangles
             return r0_x2 > r1_x1 && r1_x2 > r0_x1 && r0_y2 > r1_y1 && r1_y2 > r0_y1;
+        }
+    }
+
+    public static class SpatialOverlapCellPredicateD implements IPredicateEvaluator, Serializable {
+
+        private static final long serialVersionUID = 5418297063092065477L;
+
+        @Override
+        public boolean evaluate(IFrameTupleAccessor fta0, int tupId0, IFrameTupleAccessor fta1, int tupId1) {
+            // Compare cell IDs
+            ByteBuffer buf0 = fta0.getBuffer();
+            ByteBuffer buf1 = fta1.getBuffer();
+
+            // Different cells
+            if (buf0.getInt(fta0.getAbsoluteFieldStartOffset(tupId0, 0)) != buf1
+                    .getInt(fta1.getAbsoluteFieldStartOffset(tupId1, 0)))
+                return false;
+
+            // r0 is to the left of r1
+            double r0_x2 = buf0.getDouble(fta0.getAbsoluteFieldStartOffset(tupId0, 4));
+            double r1_x1 = buf1.getDouble(fta1.getAbsoluteFieldStartOffset(tupId1, 2));
+            if (r0_x2 <= r1_x1)
+                return false;
+
+            // r1 is to the left of r0
+            double r1_x2 = buf1.getDouble(fta1.getAbsoluteFieldStartOffset(tupId1, 4));
+            double r0_x1 = buf0.getDouble(fta0.getAbsoluteFieldStartOffset(tupId0, 2));
+            if (r1_x2 <= r0_x1)
+                return false;
+
+            // r0 is to the bottom of r1
+            double r0_y2 = buf0.getDouble(fta0.getAbsoluteFieldStartOffset(tupId0, 5));
+            double r1_y1 = buf1.getDouble(fta1.getAbsoluteFieldStartOffset(tupId1, 3));
+            if (r0_y2 <= r1_y1)
+                return false;
+
+            // r1 is to the bottom of r0
+            double r0_y1 = buf0.getDouble(fta0.getAbsoluteFieldStartOffset(tupId0, 3));
+            double r1_y2 = buf1.getDouble(fta1.getAbsoluteFieldStartOffset(tupId1, 5));
+            if (r1_y2 <= r0_y1)
+                return false;
+            return true;
         }
     }
 
@@ -1177,6 +1314,34 @@ public class SpatialJoinTest extends AbstractIntegrationTest {
             int sy1 = buf.getInt(fta.getAbsoluteFieldStartOffset(tupId, 9));
             int refX = Math.max(rx1, sx1);
             int refY = Math.max(ry1, sy1);
+            int refCellID = partitioner.getMatchingCell(refX, refY);
+            return refCellID == cellID;
+        }
+
+    }
+
+    public static class ReferencePointD implements IFilter, Serializable {
+
+        private static final long serialVersionUID = -5545594451729241617L;
+
+        /** The underlying spatial partitioner */
+        private ISpatialPartitioner partitioner;
+
+        public ReferencePointD(ISpatialPartitioner partitioner) {
+            this.partitioner = partitioner;
+        }
+
+        @Override
+        public boolean evaluate(IFrameTupleAccessor fta, int tupId) {
+            ByteBuffer buf = fta.getBuffer();
+            int cellID = buf.getInt(fta.getAbsoluteFieldStartOffset(tupId, 0));
+
+            double rx1 = buf.getDouble(fta.getAbsoluteFieldStartOffset(tupId, 2));
+            double ry1 = buf.getDouble(fta.getAbsoluteFieldStartOffset(tupId, 3));
+            double sx1 = buf.getDouble(fta.getAbsoluteFieldStartOffset(tupId, 8));
+            double sy1 = buf.getDouble(fta.getAbsoluteFieldStartOffset(tupId, 9));
+            double refX = Math.max(rx1, sx1);
+            double refY = Math.max(ry1, sy1);
             int refCellID = partitioner.getMatchingCell(refX, refY);
             return refCellID == cellID;
         }
