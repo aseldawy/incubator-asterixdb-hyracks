@@ -104,6 +104,11 @@ public class CachedFrameWriter implements IFrameWriter {
                 throw new HyracksDataException("Memory full");
         }
         cachedFrames.add(copyBuffer);
+        if (cachedFrames.size() == 1 && this.fta != null) {
+            // Iterator was initialized and this is the first frame to add, initialize fta
+            currentRecord = 0;
+            this.fta.reset(this.cachedFrames.get(currentFrame));
+        }
     }
 
     @Override
