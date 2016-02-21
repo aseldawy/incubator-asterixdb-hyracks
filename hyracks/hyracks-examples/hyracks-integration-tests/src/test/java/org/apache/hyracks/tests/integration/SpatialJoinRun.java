@@ -171,7 +171,7 @@ public class SpatialJoinRun {
                 throw new RuntimeException("Require two input files");
             JobSpecification spec = new JobSpecification();
 
-            String[] inFiles = new String[] { args[0] };
+            String[] inFiles = new String[] { args[0], args[1] };
             // Define the format of partitioned data: cellID, recordID, x1, y1, x2, y2
             UniformGridPartitionerD gridPartitioner = new UniformGridPartitionerD(-180, -90, 180, 90, 100, 100);
             RecordDescriptor partitionedDesc = new RecordDescriptor(new ISerializerDeserializer[] {
@@ -179,7 +179,7 @@ public class SpatialJoinRun {
                     DoubleSerializerDeserializer.INSTANCE, DoubleSerializerDeserializer.INSTANCE,
                     DoubleSerializerDeserializer.INSTANCE, DoubleSerializerDeserializer.INSTANCE });
 
-            long totalMemAvail = Runtime.getRuntime().freeMemory();
+            long totalMemAvail = Math.min(Runtime.getRuntime().freeMemory(), Integer.MAX_VALUE);
             int numBuffers = (int) (totalMemAvail / spec.getFrameSize());
 
             IOperatorDescriptor[] rectScanners = new IOperatorDescriptor[inFiles.length];
@@ -232,8 +232,68 @@ public class SpatialJoinRun {
 
                 PartitionConstraintHelper.addAbsoluteLocationConstraint(spec, sorters[iFile], NC_IDS);
             }
-
+            /*
             ///////////////////////////////////////////////////////////////////////////////
+            // Write final output to disk
+            ResultSetId rsId = new ResultSetId(1);
+            spec.addResultSetId(rsId);
+            
+            // Create the sink (output) operator
+            IOperatorDescriptor printer = new ResultWriterOperatorDescriptor(spec, rsId, false, false,
+                    resultSerializerFactory);
+            
+            PartitionConstraintHelper.addAbsoluteLocationConstraint(spec, printer, NC_IDS);
+            
+            spec.connect(new OneToOneConnectorDescriptor(spec), sorters[0], 0, printer, 0);
+            
+            ///////////////////////////////////////////////////////////////////////////////
+            */
+
+            // Define the joined format: rCID, rID, rx1, ry1, rx2, ry2, sCID, sID, sx1, sy1, sx2, sy2
+            RecordDescriptor joinedDesc = new RecordDescriptor(new ISerializerDeserializer[] {
+                    IntegerSerializerDeserializer.INSTANCE, IntegerSerializerDeserializer.INSTANCE,
+                    DoubleSerializerDeserializer.INSTANCE, DoubleSerializerDeserializer.INSTANCE,
+                    DoubleSerializerDeserializer.INSTANCE, DoubleSerializerDeserializer.INSTANCE,
+                    IntegerSerializerDeserializer.INSTANCE, IntegerSerializerDeserializer.INSTANCE,
+                    DoubleSerializerDeserializer.INSTANCE, DoubleSerializerDeserializer.INSTANCE,
+                    DoubleSerializerDeserializer.INSTANCE, DoubleSerializerDeserializer.INSTANCE });
+
+            // Plane-sweep join operator
+            PlaneSweepJoinOperatorDescriptor join = new PlaneSweepJoinOperatorDescriptor(spec,
+                    new CellIDX1X1ComparatorD(), new CellIDX1X2ComparatorD(), new CellIDX1X2ComparatorD(), joinedDesc,
+                    numBuffers, new SpatialOverlapCellPredicateD());
+            PartitionConstraintHelper.addAbsoluteLocationConstraint(spec, join, NC_IDS[0]);
+
+            // Connect sorted data to the plane-sweep operator
+            for (int i = 0; i < inFiles.length; i++) {
+                IConnectorDescriptor mnConnector = new MToNPartitioningConnectorDescriptor(spec,
+                        new FieldHashPartitionComputerFactory(new int[] { 0 }, new IBinaryHashFunctionFactory[] {
+                                PointableBinaryHashFunctionFactory.of(IntegerPointable.FACTORY) }));
+
+                spec.connect(mnConnector, sorters[i], 0, join, i);
+            }
+
+            // Duplicate avoidance
+            FilterOperatorDescriptor dupAvoidanceOp = new FilterOperatorDescriptor(spec, joinedDesc,
+                    new ReferencePointD(gridPartitioner));
+
+            // Connect join output to duplicate avoidance
+            spec.connect(new OneToOneConnectorDescriptor(spec), join, 0, dupAvoidanceOp, 0);
+
+            // Final output (remove cell IDs)t: rID, rx1, ry1, rx2, ry2, sID, sx1, sy1, sx2, sy2
+            RecordDescriptor outputDesc = new RecordDescriptor(new ISerializerDeserializer[] {
+                    IntegerSerializerDeserializer.INSTANCE, DoubleSerializerDeserializer.INSTANCE,
+                    DoubleSerializerDeserializer.INSTANCE, DoubleSerializerDeserializer.INSTANCE,
+                    DoubleSerializerDeserializer.INSTANCE, IntegerSerializerDeserializer.INSTANCE,
+                    DoubleSerializerDeserializer.INSTANCE, DoubleSerializerDeserializer.INSTANCE,
+                    DoubleSerializerDeserializer.INSTANCE, DoubleSerializerDeserializer.INSTANCE });
+
+            ProjectionOperatorDescriptor projectOp = new ProjectionOperatorDescriptor(spec, outputDesc,
+                    new int[] { 1, 2, 3, 4, 5, 7, 8, 9, 10, 11 });
+
+            // Connect duplicate avoidance to the projection operator
+            spec.connect(new OneToOneConnectorDescriptor(spec), dupAvoidanceOp, 0, projectOp, 0);
+
             // Write final output to disk
             ResultSetId rsId = new ResultSetId(1);
             spec.addResultSetId(rsId);
@@ -242,70 +302,10 @@ public class SpatialJoinRun {
             IOperatorDescriptor printer = new ResultWriterOperatorDescriptor(spec, rsId, false, false,
                     resultSerializerFactory);
 
-            PartitionConstraintHelper.addAbsoluteLocationConstraint(spec, printer, NC_IDS);
-
-            spec.connect(new OneToOneConnectorDescriptor(spec), sorters[0], 0, printer, 0);
-
-            ///////////////////////////////////////////////////////////////////////////////
-
-            /*
-            // Define the joined format: rCID, rID, rx1, ry1, rx2, ry2, sCID, sID, sx1, sy1, sx2, sy2
-            RecordDescriptor joinedDesc = new RecordDescriptor(new ISerializerDeserializer[] {
-                IntegerSerializerDeserializer.INSTANCE, IntegerSerializerDeserializer.INSTANCE,
-                DoubleSerializerDeserializer.INSTANCE, DoubleSerializerDeserializer.INSTANCE,
-                DoubleSerializerDeserializer.INSTANCE, DoubleSerializerDeserializer.INSTANCE,
-                IntegerSerializerDeserializer.INSTANCE, IntegerSerializerDeserializer.INSTANCE,
-                DoubleSerializerDeserializer.INSTANCE, DoubleSerializerDeserializer.INSTANCE,
-                DoubleSerializerDeserializer.INSTANCE, DoubleSerializerDeserializer.INSTANCE });
-            
-            // Plane-sweep join operator
-            PlaneSweepJoinOperatorDescriptor join = new PlaneSweepJoinOperatorDescriptor(spec, new CellIDX1X1ComparatorD(),
-                new CellIDX1X2ComparatorD(), new CellIDX1X2ComparatorD(), joinedDesc, 1000,
-                new SpatialOverlapCellPredicateD());
-            PartitionConstraintHelper.addAbsoluteLocationConstraint(spec, join, NC_IDS[0]);
-            
-            // Connect sorted data to the plane-sweep operator
-            for (int i = 0; i < inFiles.length; i++) {
-            IConnectorDescriptor mnConnector = new MToNPartitioningConnectorDescriptor(spec,
-                    new FieldHashPartitionComputerFactory(new int[] { 0 }, new IBinaryHashFunctionFactory[] {
-                            PointableBinaryHashFunctionFactory.of(IntegerPointable.FACTORY) }));
-            
-            spec.connect(mnConnector, sorters[i], 0, join, i);
-            }
-            
-            // Duplicate avoidance
-            FilterOperatorDescriptor dupAvoidanceOp = new FilterOperatorDescriptor(spec, joinedDesc,
-                new ReferencePointD(gridPartitioner));
-            
-            // Connect join output to duplicate avoidance
-            spec.connect(new OneToOneConnectorDescriptor(spec), join, 0, dupAvoidanceOp, 0);
-            
-            // Final output (remove cell IDs)t: rID, rx1, ry1, rx2, ry2, sID, sx1, sy1, sx2, sy2
-            RecordDescriptor outputDesc = new RecordDescriptor(new ISerializerDeserializer[] {
-                IntegerSerializerDeserializer.INSTANCE, DoubleSerializerDeserializer.INSTANCE,
-                DoubleSerializerDeserializer.INSTANCE, DoubleSerializerDeserializer.INSTANCE,
-                DoubleSerializerDeserializer.INSTANCE, IntegerSerializerDeserializer.INSTANCE,
-                DoubleSerializerDeserializer.INSTANCE, DoubleSerializerDeserializer.INSTANCE,
-                DoubleSerializerDeserializer.INSTANCE, DoubleSerializerDeserializer.INSTANCE });
-            
-            ProjectionOperatorDescriptor projectOp = new ProjectionOperatorDescriptor(spec, outputDesc,
-                new int[] { 1, 2, 3, 4, 5, 7, 8, 9, 10, 11 });
-            
-            // Connect duplicate avoidance to the projection operator
-            spec.connect(new OneToOneConnectorDescriptor(spec), dupAvoidanceOp, 0, projectOp, 0);
-            
-            // Write final output to disk
-            ResultSetId rsId = new ResultSetId(1);
-            spec.addResultSetId(rsId);
-            
-            // Create the sink (output) operator
-            IOperatorDescriptor printer = new ResultWriterOperatorDescriptor(spec, rsId, false, false,
-                resultSerializerFactory);
-            
             PartitionConstraintHelper.addAbsoluteLocationConstraint(spec, printer, NC_IDS[0]);
-            
+
             spec.connect(new OneToOneConnectorDescriptor(spec), projectOp, 0, printer, 0);
-             */
+
             spec.addRoot(printer);
             long t1 = System.currentTimeMillis();
             JobId jobId = hcc.startJob(spec, EnumSet.of(JobFlag.PROFILE_RUNTIME));
