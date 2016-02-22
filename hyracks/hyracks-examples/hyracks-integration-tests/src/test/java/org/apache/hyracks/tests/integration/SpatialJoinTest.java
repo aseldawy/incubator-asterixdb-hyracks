@@ -1137,8 +1137,8 @@ public class SpatialJoinTest extends AbstractIntegrationTest {
                 return r0_cellId - r1_cellId;
 
             // Compare the x1 coordinates
-            int r0_x1 = buf0.getInt(fta0.getAbsoluteFieldStartOffset(tupId0, 1));
-            int r1_x1 = buf1.getInt(fta1.getAbsoluteFieldStartOffset(tupId1, 1));
+            int r0_x1 = buf0.getInt(fta0.getAbsoluteFieldStartOffset(tupId0, 2));
+            int r1_x1 = buf1.getInt(fta1.getAbsoluteFieldStartOffset(tupId1, 2));
             return r0_x1 - r1_x1;
         }
     }
@@ -1181,8 +1181,8 @@ public class SpatialJoinTest extends AbstractIntegrationTest {
                 return r0_cellId - r1_cellId;
 
             // Compare the x1 coordinates
-            double r0_x1 = buf0.getDouble(fta0.getAbsoluteFieldStartOffset(tupId0, 1));
-            double r1_x1 = buf1.getDouble(fta1.getAbsoluteFieldStartOffset(tupId1, 1));
+            double r0_x1 = buf0.getDouble(fta0.getAbsoluteFieldStartOffset(tupId0, 2));
+            double r1_x1 = buf1.getDouble(fta1.getAbsoluteFieldStartOffset(tupId1, 2));
 
             return r0_x1 < r1_x1 ? -1 : (r0_x1 > r1_x1 ? 1 : 0);
         }
