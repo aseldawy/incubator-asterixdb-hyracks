@@ -156,13 +156,15 @@ public class CachedFrameWriter implements IFrameWriter {
         this.currentFrame = this.markFrame = 0;
         this.currentRecord = this.markRecord = 0;
         this.fta = new FrameTupleAccessor(rd);
-        this.fta.reset(this.cachedFrames.get(currentFrame));
-        // Skip over empty frames, if any
-        // Notice, initially currentRecord is zero
-        while (currentRecord >= fta.getTupleCount() && currentFrame < cachedFrames.size()) {
-            currentFrame++; // Move to next frame
-            if (currentFrame < cachedFrames.size())
-                this.fta.reset(this.cachedFrames.get(currentFrame));
+        if (currentFrame < this.cachedFrames.size()) {
+            this.fta.reset(this.cachedFrames.get(currentFrame));
+            // Skip over empty frames, if any
+            // Notice, initially currentRecord is zero
+            while (currentRecord >= fta.getTupleCount() && currentFrame < cachedFrames.size()) {
+                currentFrame++; // Move to next frame
+                if (currentFrame < cachedFrames.size())
+                    this.fta.reset(this.cachedFrames.get(currentFrame));
+            }
         }
     }
 
