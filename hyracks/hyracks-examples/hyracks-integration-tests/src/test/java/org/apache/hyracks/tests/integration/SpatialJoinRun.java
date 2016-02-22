@@ -1,17 +1,12 @@
 package org.apache.hyracks.tests.integration;
 
 import java.io.BufferedOutputStream;
-import java.io.BufferedWriter;
 import java.io.DataInputStream;
 import java.io.File;
 import java.io.FileOutputStream;
-import java.io.FileWriter;
 import java.io.OutputStream;
 import java.io.PrintStream;
-import java.util.ArrayList;
 import java.util.EnumSet;
-import java.util.List;
-import java.util.Random;
 
 import org.apache.hyracks.api.client.HyracksConnection;
 import org.apache.hyracks.api.client.IHyracksClientConnection;
@@ -51,7 +46,6 @@ import org.apache.hyracks.dataflow.common.data.marshalling.Integer64SerializerDe
 import org.apache.hyracks.dataflow.common.data.marshalling.IntegerSerializerDeserializer;
 import org.apache.hyracks.dataflow.common.data.parsers.DoubleParserFactory;
 import org.apache.hyracks.dataflow.common.data.parsers.IValueParserFactory;
-import org.apache.hyracks.dataflow.common.data.parsers.IntegerParserFactory;
 import org.apache.hyracks.dataflow.common.data.parsers.LongParserFactory;
 import org.apache.hyracks.dataflow.common.data.partition.FieldHashPartitionComputerFactory;
 import org.apache.hyracks.dataflow.std.connectors.MToNPartitioningConnectorDescriptor;
@@ -179,8 +173,7 @@ public class SpatialJoinRun {
                     DoubleSerializerDeserializer.INSTANCE, DoubleSerializerDeserializer.INSTANCE,
                     DoubleSerializerDeserializer.INSTANCE, DoubleSerializerDeserializer.INSTANCE });
 
-            long totalMemAvail = Math.min(Runtime.getRuntime().freeMemory(), Integer.MAX_VALUE);
-            int numBuffers = (int) (totalMemAvail / spec.getFrameSize());
+            int numBuffers = 250;
 
             IOperatorDescriptor[] rectScanners = new IOperatorDescriptor[inFiles.length];
             IOperatorDescriptor[] partitionOps = new IOperatorDescriptor[inFiles.length];
@@ -188,7 +181,6 @@ public class SpatialJoinRun {
             for (int iFile = 0; iFile < inFiles.length; iFile++) {
                 // Define input file format
                 FileSplit[] inputSplits;
-                Random rand = new Random();
                 if (new File(inFiles[iFile]).isFile()) {
                     inputSplits = new FileSplit[] {
                             new FileSplit(NC_IDS[0], new FileReference(new File(inFiles[iFile]))) };
@@ -196,7 +188,7 @@ public class SpatialJoinRun {
                     File[] listFiles = new File(inFiles[iFile]).listFiles();
                     inputSplits = new FileSplit[listFiles.length];
                     for (int iSplit = 0; iSplit < listFiles.length; iSplit++) {
-                        inputSplits[iSplit] = new FileSplit(NC_IDS[rand.nextInt(NC_IDS.length)],
+                        inputSplits[iSplit] = new FileSplit(NC_IDS[iFile % NC_IDS.length],
                                 new FileReference(listFiles[iSplit]));
                     }
                 }
@@ -210,27 +202,30 @@ public class SpatialJoinRun {
                                 DoubleParserFactory.INSTANCE, DoubleParserFactory.INSTANCE,
                                 DoubleParserFactory.INSTANCE, DoubleParserFactory.INSTANCE }, ','),
                         inDesc);
-                PartitionConstraintHelper.addAbsoluteLocationConstraint(spec, rectScanners[iFile], NC_IDS[0]);
+                String[] constraints = new String[Math.min(NC_IDS.length, inputSplits.length)];
+                System.arraycopy(NC_IDS, 0, constraints, 0, constraints.length);
+                PartitionConstraintHelper.addAbsoluteLocationConstraint(spec, rectScanners[iFile], constraints);
 
                 // Partition file using grid partitioner
                 partitionOps[iFile] = new SpatialPartitionOperatorDescriptor(spec, partitionedDesc, gridPartitioner);
+                PartitionConstraintHelper.addAbsoluteLocationConstraint(spec, partitionOps[iFile], NC_IDS);
 
                 // Connect input to partitioner
                 spec.connect(new OneToOneConnectorDescriptor(spec), rectScanners[iFile], 0, partitionOps[iFile], 0);
 
                 // Sort the file lexicographically by (cell ID, x1)
-                sorters[iFile] = new ExternalSortOperatorDescriptor(spec, numBuffers * 8 / 10, new int[] { 0, 2 },
+                sorters[iFile] = new ExternalSortOperatorDescriptor(spec, numBuffers, new int[] { 0, 2 },
                         new IBinaryComparatorFactory[] { PointableBinaryComparatorFactory.of(IntegerPointable.FACTORY),
                                 PointableBinaryComparatorFactory.of(DoublePointable.FACTORY) },
                         partitionedDesc);
+                PartitionConstraintHelper.addAbsoluteLocationConstraint(spec, sorters[iFile], NC_IDS);
+
                 // Connect partitioned data to the sorter
                 IConnectorDescriptor mnConnector = new MToNPartitioningConnectorDescriptor(spec,
                         new FieldHashPartitionComputerFactory(new int[] { 0 }, new IBinaryHashFunctionFactory[] {
                                 PointableBinaryHashFunctionFactory.of(IntegerPointable.FACTORY) }));
 
                 spec.connect(mnConnector, partitionOps[iFile], 0, sorters[iFile], 0);
-
-                PartitionConstraintHelper.addAbsoluteLocationConstraint(spec, sorters[iFile], NC_IDS);
             }
             /*
             ///////////////////////////////////////////////////////////////////////////////
@@ -251,10 +246,10 @@ public class SpatialJoinRun {
 
             // Define the joined format: rCID, rID, rx1, ry1, rx2, ry2, sCID, sID, sx1, sy1, sx2, sy2
             RecordDescriptor joinedDesc = new RecordDescriptor(new ISerializerDeserializer[] {
-                    IntegerSerializerDeserializer.INSTANCE, IntegerSerializerDeserializer.INSTANCE,
+                    IntegerSerializerDeserializer.INSTANCE, Integer64SerializerDeserializer.INSTANCE,
                     DoubleSerializerDeserializer.INSTANCE, DoubleSerializerDeserializer.INSTANCE,
                     DoubleSerializerDeserializer.INSTANCE, DoubleSerializerDeserializer.INSTANCE,
-                    IntegerSerializerDeserializer.INSTANCE, IntegerSerializerDeserializer.INSTANCE,
+                    IntegerSerializerDeserializer.INSTANCE, Integer64SerializerDeserializer.INSTANCE,
                     DoubleSerializerDeserializer.INSTANCE, DoubleSerializerDeserializer.INSTANCE,
                     DoubleSerializerDeserializer.INSTANCE, DoubleSerializerDeserializer.INSTANCE });
 
@@ -262,7 +257,7 @@ public class SpatialJoinRun {
             PlaneSweepJoinOperatorDescriptor join = new PlaneSweepJoinOperatorDescriptor(spec,
                     new CellIDX1X1ComparatorD(), new CellIDX1X2ComparatorD(), new CellIDX1X2ComparatorD(), joinedDesc,
                     numBuffers, new SpatialOverlapCellPredicateD());
-            PartitionConstraintHelper.addAbsoluteLocationConstraint(spec, join, NC_IDS[0]);
+            PartitionConstraintHelper.addAbsoluteLocationConstraint(spec, join, NC_IDS);
 
             // Connect sorted data to the plane-sweep operator
             for (int i = 0; i < inFiles.length; i++) {
@@ -282,9 +277,9 @@ public class SpatialJoinRun {
 
             // Final output (remove cell IDs)t: rID, rx1, ry1, rx2, ry2, sID, sx1, sy1, sx2, sy2
             RecordDescriptor outputDesc = new RecordDescriptor(new ISerializerDeserializer[] {
-                    IntegerSerializerDeserializer.INSTANCE, DoubleSerializerDeserializer.INSTANCE,
+                    Integer64SerializerDeserializer.INSTANCE, DoubleSerializerDeserializer.INSTANCE,
                     DoubleSerializerDeserializer.INSTANCE, DoubleSerializerDeserializer.INSTANCE,
-                    DoubleSerializerDeserializer.INSTANCE, IntegerSerializerDeserializer.INSTANCE,
+                    DoubleSerializerDeserializer.INSTANCE, Integer64SerializerDeserializer.INSTANCE,
                     DoubleSerializerDeserializer.INSTANCE, DoubleSerializerDeserializer.INSTANCE,
                     DoubleSerializerDeserializer.INSTANCE, DoubleSerializerDeserializer.INSTANCE });
 
@@ -302,7 +297,7 @@ public class SpatialJoinRun {
             IOperatorDescriptor printer = new ResultWriterOperatorDescriptor(spec, rsId, false, false,
                     resultSerializerFactory);
 
-            PartitionConstraintHelper.addAbsoluteLocationConstraint(spec, printer, NC_IDS[0]);
+            PartitionConstraintHelper.addAbsoluteLocationConstraint(spec, printer, NC_IDS);
 
             spec.connect(new OneToOneConnectorDescriptor(spec), projectOp, 0, printer, 0);
 
