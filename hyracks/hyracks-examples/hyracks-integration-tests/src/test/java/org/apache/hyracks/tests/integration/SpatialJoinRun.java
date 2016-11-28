@@ -1,4 +1,22 @@
-package org.apache.hyracks.tests.integration;
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+ package org.apache.hyracks.tests.integration;
 
 import java.io.BufferedOutputStream;
 import java.io.DataInputStream;
@@ -56,7 +74,6 @@ import org.apache.hyracks.dataflow.std.file.FileScanOperatorDescriptor;
 import org.apache.hyracks.dataflow.std.file.FileSplit;
 import org.apache.hyracks.dataflow.std.file.IFileSplitProvider;
 import org.apache.hyracks.dataflow.std.result.ResultWriterOperatorDescriptor;
-import org.apache.hyracks.dataflow.std.sjoin.FilterOperatorDescriptor;
 import org.apache.hyracks.dataflow.std.sjoin.PlaneSweepJoinOperatorDescriptor;
 import org.apache.hyracks.dataflow.std.sjoin.ProjectionOperatorDescriptor;
 import org.apache.hyracks.dataflow.std.sjoin.SpatialPartitionOperatorDescriptor;
@@ -256,7 +273,7 @@ public class SpatialJoinRun {
             // Plane-sweep join operator
             PlaneSweepJoinOperatorDescriptor join = new PlaneSweepJoinOperatorDescriptor(spec,
                     new CellIDX1X1ComparatorD(), new CellIDX1X2ComparatorD(), new CellIDX1X2ComparatorD(), joinedDesc,
-                    numBuffers, new SpatialOverlapCellPredicateD());
+                    numBuffers, new SpatialOverlapCellPredicateD(), new ReferencePointD(gridPartitioner));
             PartitionConstraintHelper.addAbsoluteLocationConstraint(spec, join, NC_IDS);
 
             // Connect sorted data to the plane-sweep operator
@@ -267,13 +284,6 @@ public class SpatialJoinRun {
 
                 spec.connect(mnConnector, sorters[i], 0, join, i);
             }
-
-            // Duplicate avoidance
-            FilterOperatorDescriptor dupAvoidanceOp = new FilterOperatorDescriptor(spec, joinedDesc,
-                    new ReferencePointD(gridPartitioner));
-
-            // Connect join output to duplicate avoidance
-            spec.connect(new OneToOneConnectorDescriptor(spec), join, 0, dupAvoidanceOp, 0);
 
             // Final output (remove cell IDs)t: rID, rx1, ry1, rx2, ry2, sID, sx1, sy1, sx2, sy2
             RecordDescriptor outputDesc = new RecordDescriptor(new ISerializerDeserializer[] {
@@ -286,8 +296,8 @@ public class SpatialJoinRun {
             ProjectionOperatorDescriptor projectOp = new ProjectionOperatorDescriptor(spec, outputDesc,
                     new int[] { 1, 2, 3, 4, 5, 7, 8, 9, 10, 11 });
 
-            // Connect duplicate avoidance to the projection operator
-            spec.connect(new OneToOneConnectorDescriptor(spec), dupAvoidanceOp, 0, projectOp, 0);
+            // Connect join output to the projection operator to remove cell IDs
+            spec.connect(new OneToOneConnectorDescriptor(spec), join, 0, projectOp, 0);
 
             // Write final output to disk
             ResultSetId rsId = new ResultSetId(1);

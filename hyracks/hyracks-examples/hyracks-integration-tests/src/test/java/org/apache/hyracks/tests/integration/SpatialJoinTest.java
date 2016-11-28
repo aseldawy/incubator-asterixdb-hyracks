@@ -60,8 +60,6 @@ import org.apache.hyracks.dataflow.std.file.FileScanOperatorDescriptor;
 import org.apache.hyracks.dataflow.std.file.FileSplit;
 import org.apache.hyracks.dataflow.std.file.IFileSplitProvider;
 import org.apache.hyracks.dataflow.std.result.ResultWriterOperatorDescriptor;
-import org.apache.hyracks.dataflow.std.sjoin.FilterOperatorDescriptor;
-import org.apache.hyracks.dataflow.std.sjoin.IFilter;
 import org.apache.hyracks.dataflow.std.sjoin.ISpatialPartitioner;
 import org.apache.hyracks.dataflow.std.sjoin.PlaneSweepJoinOperatorDescriptor;
 import org.apache.hyracks.dataflow.std.sjoin.ProjectionOperatorDescriptor;
@@ -121,7 +119,7 @@ public class SpatialJoinTest extends AbstractIntegrationTest {
                 DoubleSerializerDeserializer.INSTANCE, DoubleSerializerDeserializer.INSTANCE });
 
         PlaneSweepJoinOperatorDescriptor join = new PlaneSweepJoinOperatorDescriptor(spec, new X1X1ComparatorD(),
-                new X1X2ComparatorD(), new X1X2ComparatorD(), outputDesc, 100, new SpatialOverlapPredicateD());
+                new X1X2ComparatorD(), new X1X2ComparatorD(), outputDesc, 100, new SpatialOverlapPredicateD(), null);
         PartitionConstraintHelper.addAbsoluteLocationConstraint(spec, join, NC1_ID);
 
         ResultSetId rsId = new ResultSetId(1);
@@ -194,7 +192,7 @@ public class SpatialJoinTest extends AbstractIntegrationTest {
                 IntegerSerializerDeserializer.INSTANCE, IntegerSerializerDeserializer.INSTANCE });
 
         PlaneSweepJoinOperatorDescriptor join = new PlaneSweepJoinOperatorDescriptor(spec, new X1X1ComparatorI(),
-                new X1X2ComparatorI(), new X1X2ComparatorI(), outputDesc, 100, new SpatialOverlapPredicateI());
+                new X1X2ComparatorI(), new X1X2ComparatorI(), outputDesc, 100, new SpatialOverlapPredicateI(), null);
         PartitionConstraintHelper.addAbsoluteLocationConstraint(spec, join, NC1_ID);
 
         ResultSetId rsId = new ResultSetId(1);
@@ -277,7 +275,7 @@ public class SpatialJoinTest extends AbstractIntegrationTest {
 
         // Create the join operator descriptor
         PlaneSweepJoinOperatorDescriptor join = new PlaneSweepJoinOperatorDescriptor(spec, new X1X1ComparatorI(),
-                new X1X2ComparatorI(), new X1X2ComparatorI(), outputDesc, 100, new SpatialOverlapPredicateI());
+                new X1X2ComparatorI(), new X1X2ComparatorI(), outputDesc, 100, new SpatialOverlapPredicateI(), null);
         PartitionConstraintHelper.addAbsoluteLocationConstraint(spec, join, NC1_ID);
 
         ResultSetId rsId = new ResultSetId(1);
@@ -364,7 +362,7 @@ public class SpatialJoinTest extends AbstractIntegrationTest {
 
         // Create the join operator descriptor
         PlaneSweepJoinOperatorDescriptor join = new PlaneSweepJoinOperatorDescriptor(spec, new X1X1ComparatorI(),
-                new X1X2ComparatorI(), new X1X2ComparatorI(), outputDesc, 10, new SpatialOverlapPredicateI());
+                new X1X2ComparatorI(), new X1X2ComparatorI(), outputDesc, 10, new SpatialOverlapPredicateI(), null);
         PartitionConstraintHelper.addAbsoluteLocationConstraint(spec, join, NC1_ID);
 
         ResultSetId rsId = new ResultSetId(1);
@@ -540,7 +538,7 @@ public class SpatialJoinTest extends AbstractIntegrationTest {
         // Plane-sweep join operator
         PlaneSweepJoinOperatorDescriptor join = new PlaneSweepJoinOperatorDescriptor(spec, new CellIDX1X1ComparatorI(),
                 new CellIDX1X2ComparatorI(), new CellIDX1X2ComparatorI(), joinedDesc, 10,
-                new SpatialOverlapCellPredicateI());
+                new SpatialOverlapCellPredicateI(), null);
         PartitionConstraintHelper.addAbsoluteLocationConstraint(spec, join, NC1_ID);
 
         ProjectionOperatorDescriptor projectOp = new ProjectionOperatorDescriptor(spec, outputDesc,
@@ -662,11 +660,8 @@ public class SpatialJoinTest extends AbstractIntegrationTest {
         // Plane-sweep join operator
         PlaneSweepJoinOperatorDescriptor join = new PlaneSweepJoinOperatorDescriptor(spec, new CellIDX1X1ComparatorI(),
                 new CellIDX1X2ComparatorI(), new CellIDX1X2ComparatorI(), joinedDesc, 10,
-                new SpatialOverlapCellPredicateI());
+                new SpatialOverlapCellPredicateI(), new ReferencePointI(gridPartitioner1));
         PartitionConstraintHelper.addAbsoluteLocationConstraint(spec, join, NC1_ID);
-
-        FilterOperatorDescriptor dupAvoidanceOp = new FilterOperatorDescriptor(spec, joinedDesc,
-                new ReferencePointI(gridPartitioner1));
 
         ProjectionOperatorDescriptor projectOp = new ProjectionOperatorDescriptor(spec, outputDesc,
                 new int[] { 1, 2, 3, 4, 5, 7, 8, 9, 10, 11 });
@@ -690,8 +685,7 @@ public class SpatialJoinTest extends AbstractIntegrationTest {
         spec.connect(new OneToOneConnectorDescriptor(spec), sorter1, 0, join, 0);
         spec.connect(new OneToOneConnectorDescriptor(spec), sorter2, 0, join, 1);
 
-        spec.connect(new OneToOneConnectorDescriptor(spec), join, 0, dupAvoidanceOp, 0);
-        spec.connect(new OneToOneConnectorDescriptor(spec), dupAvoidanceOp, 0, projectOp, 0);
+        spec.connect(new OneToOneConnectorDescriptor(spec), join, 0, projectOp, 0);
 
         spec.connect(new OneToOneConnectorDescriptor(spec), projectOp, 0, printer, 0);
 
@@ -755,9 +749,9 @@ public class SpatialJoinTest extends AbstractIntegrationTest {
         UniformGridPartitionerD gridPartitioner = new UniformGridPartitionerD(0, 0, 10000, 10000, 100, 100);
 
         // Project a cell ID column to each record
-        SpatialPartitionOperatorDescriptor partitionOp1 = new SpatialPartitionOperatorDescriptor(spec, partitionedDesc,
+        SpatialPartitionOperatorDescriptor gridder1 = new SpatialPartitionOperatorDescriptor(spec, partitionedDesc,
                 gridPartitioner);
-        SpatialPartitionOperatorDescriptor partitionOp2 = new SpatialPartitionOperatorDescriptor(spec, partitionedDesc,
+        SpatialPartitionOperatorDescriptor gridder2 = new SpatialPartitionOperatorDescriptor(spec, partitionedDesc,
                 gridPartitioner);
 
         // Sort the two inputs based on (cellID, X1)
@@ -773,11 +767,8 @@ public class SpatialJoinTest extends AbstractIntegrationTest {
         // Plane-sweep join operator
         PlaneSweepJoinOperatorDescriptor join = new PlaneSweepJoinOperatorDescriptor(spec, new CellIDX1X1ComparatorD(),
                 new CellIDX1X2ComparatorD(), new CellIDX1X2ComparatorD(), joinedDesc, 10,
-                new SpatialOverlapCellPredicateD());
+                new SpatialOverlapCellPredicateD(), new ReferencePointD(gridPartitioner));
         PartitionConstraintHelper.addAbsoluteLocationConstraint(spec, join, NC1_ID);
-
-        FilterOperatorDescriptor dupAvoidanceOp = new FilterOperatorDescriptor(spec, joinedDesc,
-                new ReferencePointD(gridPartitioner));
 
         ProjectionOperatorDescriptor projectOp = new ProjectionOperatorDescriptor(spec, outputDesc,
                 new int[] { 1, 2, 3, 4, 5, 7, 8, 9, 10, 11 });
@@ -792,26 +783,25 @@ public class SpatialJoinTest extends AbstractIntegrationTest {
         PartitionConstraintHelper.addAbsoluteLocationConstraint(spec, printer, NC1_ID);
 
         // Connect input and output
-        spec.connect(new OneToOneConnectorDescriptor(spec), rect1Scanner, 0, partitionOp1, 0);
-        spec.connect(new OneToOneConnectorDescriptor(spec), rect2Scanner, 0, partitionOp2, 0);
+        spec.connect(new OneToOneConnectorDescriptor(spec), rect1Scanner, 0, gridder1, 0);
+        spec.connect(new OneToOneConnectorDescriptor(spec), rect2Scanner, 0, gridder2, 0);
 
-        spec.connect(new OneToOneConnectorDescriptor(spec), partitionOp1, 0, sorter1, 0);
-        spec.connect(new OneToOneConnectorDescriptor(spec), partitionOp2, 0, sorter2, 0);
+        spec.connect(new OneToOneConnectorDescriptor(spec), gridder1, 0, sorter1, 0);
+        spec.connect(new OneToOneConnectorDescriptor(spec), gridder2, 0, sorter2, 0);
 
         ////////////////////////////
-        IConnectorDescriptor repartitioner1 = new MToNPartitioningConnectorDescriptor(spec,
+        IConnectorDescriptor shuffle1 = new MToNPartitioningConnectorDescriptor(spec,
                 new FieldHashPartitionComputerFactory(new int[] { 0 }, new IBinaryHashFunctionFactory[] {
                         PointableBinaryHashFunctionFactory.of(IntegerPointable.FACTORY) }));
-        IConnectorDescriptor repartitioner2 = new MToNPartitioningConnectorDescriptor(spec,
+        IConnectorDescriptor shuffle2 = new MToNPartitioningConnectorDescriptor(spec,
                 new FieldHashPartitionComputerFactory(new int[] { 0 }, new IBinaryHashFunctionFactory[] {
                         PointableBinaryHashFunctionFactory.of(IntegerPointable.FACTORY) }));
         ////////////////////////////////
 
-        spec.connect(repartitioner1, sorter1, 0, join, 0);
-        spec.connect(repartitioner2, sorter2, 0, join, 1);
+        spec.connect(shuffle1, sorter1, 0, join, 0);
+        spec.connect(shuffle2, sorter2, 0, join, 1);
 
-        spec.connect(new OneToOneConnectorDescriptor(spec), join, 0, dupAvoidanceOp, 0);
-        spec.connect(new OneToOneConnectorDescriptor(spec), dupAvoidanceOp, 0, projectOp, 0);
+        spec.connect(new OneToOneConnectorDescriptor(spec), join, 0, projectOp, 0);
 
         spec.connect(new OneToOneConnectorDescriptor(spec), projectOp, 0, printer, 0);
 
@@ -1286,18 +1276,21 @@ public class SpatialJoinTest extends AbstractIntegrationTest {
     /**
      * Reference point duplicate avoidance techniques applied to rectangles
      * with integer coordinates.
-     * Format of input tuples: cID, rID, rx1, ry1, rx2, ry2, cID, sID, sx1, sy1, sx2, sy2
+     * Format of input tuples: (cID, rID, rx1, ry1, rx2, ry2) and (cID, sID, sx1, sy1, sx2, sy2)
      * Notice that cID is repeated twice as a result of co-partitioning the two input
      * datasets. The two cIDs should have equal values as the PBSM applies the join
      * function for each cell separately.
+     *
+     * The predicate returns true iff the given pair of records should be reported to the answer.
+     * It returns false if the pair should be skipped (avoided) in the answer.
      * 
      * @author Ahmed Eldawy
      */
-    public static class ReferencePointI implements IFilter, Serializable {
+    public static class ReferencePointI implements IPredicateEvaluator, Serializable {
 
         private static final long serialVersionUID = -5545594451729241617L;
 
-        /** The underlying spatial partitioner */
+        /** The underlying spatial partitioner which is required to determine the boundaries of a cell ID */
         private ISpatialPartitioner partitioner;
 
         public ReferencePointI(ISpatialPartitioner partitioner) {
@@ -1305,22 +1298,22 @@ public class SpatialJoinTest extends AbstractIntegrationTest {
         }
 
         @Override
-        public boolean evaluate(IFrameTupleAccessor fta, int tupId) {
-            ByteBuffer buf = fta.getBuffer();
-            int cellID = buf.getInt(fta.getAbsoluteFieldStartOffset(tupId, 0));
-            int rx1 = buf.getInt(fta.getAbsoluteFieldStartOffset(tupId, 2));
-            int ry1 = buf.getInt(fta.getAbsoluteFieldStartOffset(tupId, 3));
-            int sx1 = buf.getInt(fta.getAbsoluteFieldStartOffset(tupId, 8));
-            int sy1 = buf.getInt(fta.getAbsoluteFieldStartOffset(tupId, 9));
-            int refX = Math.max(rx1, sx1);
-            int refY = Math.max(ry1, sy1);
+        public boolean evaluate(IFrameTupleAccessor fta0, int tupId0, IFrameTupleAccessor fta1, int tupId1) {
+            ByteBuffer buf = fta0.getBuffer();
+            int cellID = buf.getInt(fta0.getAbsoluteFieldStartOffset(tupId0, 0));
+            int x0 = buf.getInt(fta0.getAbsoluteFieldStartOffset(tupId0, 2));
+            int y0 = buf.getInt(fta0.getAbsoluteFieldStartOffset(tupId0, 3));
+            buf = fta1.getBuffer();
+            int x1 = buf.getInt(fta1.getAbsoluteFieldStartOffset(tupId1, 2));
+            int y1 = buf.getInt(fta1.getAbsoluteFieldStartOffset(tupId1, 3));
+            int refX = Math.max(x0, x1);
+            int refY = Math.max(y0, y1);
             int refCellID = partitioner.getMatchingCell(refX, refY);
             return refCellID == cellID;
         }
-
     }
 
-    public static class ReferencePointD implements IFilter, Serializable {
+    public static class ReferencePointD implements IPredicateEvaluator, Serializable {
 
         private static final long serialVersionUID = -5545594451729241617L;
 
@@ -1332,16 +1325,17 @@ public class SpatialJoinTest extends AbstractIntegrationTest {
         }
 
         @Override
-        public boolean evaluate(IFrameTupleAccessor fta, int tupId) {
-            ByteBuffer buf = fta.getBuffer();
-            int cellID = buf.getInt(fta.getAbsoluteFieldStartOffset(tupId, 0));
+        public boolean evaluate(IFrameTupleAccessor fta0, int tupId0, IFrameTupleAccessor fta1, int tupId1) {
+            ByteBuffer buf = fta0.getBuffer();
+            int cellID = buf.getInt(fta0.getAbsoluteFieldStartOffset(tupId0, 0));
 
-            double rx1 = buf.getDouble(fta.getAbsoluteFieldStartOffset(tupId, 2));
-            double ry1 = buf.getDouble(fta.getAbsoluteFieldStartOffset(tupId, 3));
-            double sx1 = buf.getDouble(fta.getAbsoluteFieldStartOffset(tupId, 8));
-            double sy1 = buf.getDouble(fta.getAbsoluteFieldStartOffset(tupId, 9));
-            double refX = Math.max(rx1, sx1);
-            double refY = Math.max(ry1, sy1);
+            double x0 = buf.getDouble(fta0.getAbsoluteFieldStartOffset(tupId0, 2));
+            double y0 = buf.getDouble(fta0.getAbsoluteFieldStartOffset(tupId0, 3));
+            buf = fta1.getBuffer();
+            double x1 = buf.getDouble(fta1.getAbsoluteFieldStartOffset(tupId1, 2));
+            double y1 = buf.getDouble(fta1.getAbsoluteFieldStartOffset(tupId1, 3));
+            double refX = Math.max(x0, x1);
+            double refY = Math.max(y0, y1);
             int refCellID = partitioner.getMatchingCell(refX, refY);
             return refCellID == cellID;
         }

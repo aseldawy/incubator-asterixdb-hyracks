@@ -50,6 +50,9 @@ public class PlaneSweepJoinOperatorDescriptor extends AbstractOperatorDescriptor
     /** The spatial join predicate */
     private IPredicateEvaluator predEvaluator;
 
+    /** The duplicate avoidance predicate which return true iff a pair should be reported to the answer */
+    private IPredicateEvaluator dupAvoidance;
+
     /** Compares the left edge of two records r and s */
     private ITuplePairComparator rx1sx1;
 
@@ -88,7 +91,7 @@ public class PlaneSweepJoinOperatorDescriptor extends AbstractOperatorDescriptor
      */
     public PlaneSweepJoinOperatorDescriptor(IOperatorDescriptorRegistry spec, ITuplePairComparator rx1sx1,
             ITuplePairComparator rx1sx2, ITuplePairComparator sx1rx2, RecordDescriptor outputDescriptor,
-            int memCapacity, IPredicateEvaluator predEvaluator) {
+            int memCapacity, IPredicateEvaluator predEvaluator, IPredicateEvaluator dupAvoidance) {
         super(spec, 2, 1);
         this.rx1sx1 = rx1sx1;
         this.rx1sx2 = rx1sx2;
@@ -98,6 +101,7 @@ public class PlaneSweepJoinOperatorDescriptor extends AbstractOperatorDescriptor
         this.recordDescriptors[0] = outputDescriptor;
         this.memCapacity = memCapacity;
         this.predEvaluator = predEvaluator;
+        this.dupAvoidance = dupAvoidance;
     }
 
     @Override
@@ -199,7 +203,7 @@ public class PlaneSweepJoinOperatorDescriptor extends AbstractOperatorDescriptor
         public synchronized PlaneSweepJoin getPlaneSweepJoin() throws HyracksDataException {
             if (planeSweepJoin == null) {
                 // Initialize the plane-sweep join helper class
-                planeSweepJoin = new PlaneSweepJoin(ctx, datasets, outputWriter, rx1sx1, rx1sx2, sx1rx2, predEvaluator);
+                planeSweepJoin = new PlaneSweepJoin(ctx, datasets, outputWriter, rx1sx1, rx1sx2, sx1rx2, predEvaluator, dupAvoidance);
             }
             return planeSweepJoin;
         }

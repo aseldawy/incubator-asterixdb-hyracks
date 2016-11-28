@@ -46,6 +46,8 @@ public class PlaneSweepJoin {
     private ITuplePairComparator rx1sx2;
     private ITuplePairComparator sx1rx2;
     private IPredicateEvaluator predEvaluator;
+    /**A predicate that return true if an output tuple should be reported, and false if it should be avoided*/
+    private IPredicateEvaluator dupAvoidance;
     /** The appender used to write output records */
     private FrameTupleAppender appender;
 
@@ -90,7 +92,7 @@ public class PlaneSweepJoin {
      */
     public PlaneSweepJoin(IHyracksTaskContext ctx, CachedFrameWriter[] datasets, IFrameWriter outputWriter,
             ITuplePairComparator rx1sx1, ITuplePairComparator rx1sx2, ITuplePairComparator sx1rx2,
-            IPredicateEvaluator predEvaluator) throws HyracksDataException {
+            IPredicateEvaluator predEvaluator, IPredicateEvaluator dupAvoidance) throws HyracksDataException {
         this.ctx = ctx;
         this.datasets = datasets;
         this.outputWriter = outputWriter;
@@ -98,6 +100,7 @@ public class PlaneSweepJoin {
         this.rx1sx2 = rx1sx2;
         this.sx1rx2 = sx1rx2;
         this.predEvaluator = predEvaluator;
+        this.dupAvoidance = dupAvoidance;
         this.sjState = SJ_State.SJ_NOT_STARTED;
         this.appender = new FrameTupleAppender(new VSizeFrame(this.ctx));
         this.outputWriter.open();
@@ -173,9 +176,13 @@ public class PlaneSweepJoin {
                     // Check if r and s overlap
                     if (predEvaluator.evaluate(datasets[0].fta, datasets[0].currentRecord, datasets[1].fta,
                             datasets[1].currentRecord)) {
-                        // Report this pair to answer
-                        FrameUtils.appendConcatToWriter(outputWriter, appender, datasets[0].fta,
-                                datasets[0].currentRecord, datasets[1].fta, datasets[1].currentRecord);
+                        // Apply duplicate avoidance, if needed, and report the pair to answer
+                        if (dupAvoidance == null ||
+                                dupAvoidance.evaluate(datasets[0].fta, datasets[0].currentRecord, datasets[1].fta,
+                                        datasets[1].currentRecord))
+                            // Report this pair to answer
+                            FrameUtils.appendConcatToWriter(outputWriter, appender, datasets[0].fta,
+                                    datasets[0].currentRecord, datasets[1].fta, datasets[1].currentRecord);
                     }
                     // Move to next record in s
                     datasets[1].next();
@@ -201,9 +208,12 @@ public class PlaneSweepJoin {
                     // Check if r and s overlap
                     if (predEvaluator.evaluate(datasets[0].fta, datasets[0].currentRecord, datasets[1].fta,
                             datasets[1].currentRecord)) {
-                        // Report this pair to answer
-                        FrameUtils.appendConcatToWriter(outputWriter, appender, datasets[0].fta,
-                                datasets[0].currentRecord, datasets[1].fta, datasets[1].currentRecord);
+                        // Apply duplicate avoidance, if needed, and report the pair to answer
+                        if (dupAvoidance == null ||
+                                dupAvoidance.evaluate(datasets[0].fta, datasets[0].currentRecord, datasets[1].fta,
+                                        datasets[1].currentRecord))
+                            FrameUtils.appendConcatToWriter(outputWriter, appender, datasets[0].fta,
+                                    datasets[0].currentRecord, datasets[1].fta, datasets[1].currentRecord);
                     }
                     // Move to next record in r
                     datasets[0].next();
