@@ -46,7 +46,7 @@ public class LimitOperatorDescriptor extends AbstractSingleActivityOperatorDescr
     @Override
     public IOperatorNodePushable createPushRuntime(final IHyracksTaskContext ctx,
             final IRecordDescriptorProvider recordDescProvider, int partition, int nPartitions)
-                    throws HyracksDataException {
+            throws HyracksDataException {
 
         return new AbstractUnaryInputUnaryOutputOperatorNodePushable() {
             private FrameTupleAccessor fta;
@@ -73,7 +73,7 @@ public class LimitOperatorDescriptor extends AbstractSingleActivityOperatorDescr
                             FrameUtils.appendToWriter(writer, partialAppender, fta, i);
                             currentSize++;
                         }
-                        partialAppender.flush(writer, false);
+                        partialAppender.flush(writer,false);
                         finished = true;
                     } else {
                         FrameUtils.flushFrame(buffer, writer);
@@ -85,6 +85,7 @@ public class LimitOperatorDescriptor extends AbstractSingleActivityOperatorDescr
             @Override
             public void fail() throws HyracksDataException {
                 writer.fail();
+
             }
 
             @Override
